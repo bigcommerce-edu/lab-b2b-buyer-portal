@@ -11,9 +11,17 @@ const initErp = ({
   companyId: string,
   // TODO: Type `appDispatch` as `AppDispatch`
 }) => {
-  // TODO: Use `fetchStorefrontToken` to get the token and log the result
-  //  - If `b2bToken` or `companyId` is not provided, return immediately
-  throw new Error('initErp not implemented');
+  if (!b2bToken || !companyId) return;
+
+  // TRY: Watch the console in your browser tools to see the mock token request/response
+  fetchStorefrontToken({
+    b2bToken,
+    b2bCompanyId: companyId,
+    storeHash,
+  }).then((erpToken) => {
+    // TODO: Remove this console.log after implementing dispatch
+    console.log('erpToken', erpToken);
+  });
 };
 
 export { initErp };

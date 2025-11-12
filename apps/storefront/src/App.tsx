@@ -38,6 +38,8 @@ import {
   useAppSelector,
 } from './store';
 
+import { initErp } from '@/shared/service/erp-bff/initErp';
+
 const B3GlobalTip = lazy(() => import('@/components/B3GlobalTip'));
 
 const B3HoverButton = lazy(() => import('@/components/outSideComponents/B3HoverButton'));
@@ -78,8 +80,8 @@ export default function App() {
   const { quotesCreateActionsPermission, shoppingListCreateActionsPermission } =
     useAppSelector(rolePermissionSelector);
 
-  // TODO: Get the `b2bToken` and `companyId` values from the Redux store
-  //  - Use `useAppSelector` with callback functions to access the `company` value from the store
+  const b2bToken = useAppSelector(({ company }) => company.tokens.B2BToken);
+  const companyId = useAppSelector(({ company }) => company.companyInfo.id);
 
   // TODO: Get the `erpToken` value from the Redux store
   //  - This use of `useAppSelector` can directly use the `selectErpToken` selector from the `erp` slice
@@ -366,9 +368,14 @@ export default function App() {
     setCustomStyle(newStyle);
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
-  // TODO: Use a side effect to initialize the ERP token
-  //  - Effect should depend on the values of `b2bToken`, `companyId`
-  //  - If `b2bToken` and `companyId` exist, call `initErp` with the values
+  useEffect(() => {
+    if (b2bToken && companyId) {  
+      initErp({ 
+        b2bToken, 
+        companyId,
+      });
+    }
+  }, [b2bToken, companyId])
 
   return (
     <>
