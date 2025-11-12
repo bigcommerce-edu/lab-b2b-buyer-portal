@@ -29,13 +29,10 @@ export default function RecentOrders({
   startLoad,
   setOpenPage,
 }: OrdersProps) {
-  // TODO: Get the token needed for ERP API calls with `useErpToken`
-  
+  const erpToken = useErpToken();
   const b3Lang = useB3Lang();
 
-  // TODO: Create a new state value called `b2bOrders` that stores the initial order records 
-  // with only B2B Edition data
-  
+  const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -44,16 +41,25 @@ export default function RecentOrders({
     if (!startLoad || !loading) return;
 
     getRecentOrders().then((b2bOrders) => {
-      // TODO: Also set the `b2bOrders` state value to trigger loading third-party data
+      setB2bOrders(b2bOrders);
       setOrders(b2bOrders);
       setLoading(false);
     });
   }, [startLoad]);
 
-  // TODO: Use `useEffect` to fetch ERP order data for all orders
-  //  - Effect should depend on the value of `b2bOrders`
-  //  - Return immediately if `b2bOrders` is empty
-  //  - Use `erpFetchCompanyOrders` to fetch the ERP order data and log the result
+  useEffect(() => {
+    if (b2bOrders.length <= 0) return;
+    
+    erpFetchCompanyOrders({
+      token: erpToken,
+      filters: {
+        b2bOrderIds: b2bOrders.map((order) => order.orderId),
+      },
+    }).then((erpOrders) => {
+      // TODO: Remove this console.log after implementing the main logic
+      console.log(erpOrders);
+    });
+  }, [b2bOrders]);
 
   const orderColumns = [
     {
