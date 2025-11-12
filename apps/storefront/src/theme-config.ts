@@ -9,13 +9,25 @@ export const getThemeConfig = (theme: Theme) => {
       primary: {
         main: theme.palette.primary.main,
       },
-      // TODO: Set the secondary color
+      secondary: {
+        main: '#f2a579',
+      },
     },
     typography: {
       fontFamily: 'Montserrat, Arial, sans-serif',
-
-      // TODO: Apply other typography config
-      //  - Apply a different font size for body text, h3 headings, and buttons
+      body1: {
+        fontSize: '1.25rem',
+      },
+      body2: {
+        fontSize: '1rem',
+      },
+      h3: {
+        fontSize: '1.5rem',
+        fontWeight: 'bold',
+      },
+      button: {
+        fontSize: '1rem',
+      },
     },
   } as ThemeOptions;
 }
