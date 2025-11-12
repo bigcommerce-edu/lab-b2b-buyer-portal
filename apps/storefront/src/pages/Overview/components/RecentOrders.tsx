@@ -23,8 +23,9 @@ interface OrdersProps {
   setOpenPage: SetOpenPage;
 }
 
-// TODO Create an interface called `OverviewOrderWithErpStatus` that extends `OverviewOrder` 
-// and adds an optional `erpStatus` field
+interface OverviewOrderWithErpStatus extends OverviewOrder {
+  erpStatus?: string;
+}
 
 export default function RecentOrders({
   startLoad,
@@ -35,9 +36,7 @@ export default function RecentOrders({
   const b3Lang = useB3Lang();
 
   const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
-  // TODO: Change the type of `orders` to `OverviewOrderWithErpStatus` to account for added ERP field
-  const [orders, setOrders] = useState<OverviewOrder[]>([]);
-
+  const [orders, setOrders] = useState<OverviewOrderWithErpStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,18 +58,17 @@ export default function RecentOrders({
         b2bOrderIds: b2bOrders.map((order) => order.orderId),
       },
     }).then((erpOrders) => {
-      // TODO: Remove this console.log after implementing the main logic
-      console.log(erpOrders);
-
-      // TODO: Add `erpStatus` field to each order record and update the main `orders` state value
-      //  - Use `map` to loop through all `b2bOrders`
-      //  - Find the record in `erpOrders` with a `b2bOrderId` matching the current order's `orderId`
-      //  - Return a new object with the original order data and the ERP status
-      //  - Set the new value to the `orders` state
+      const updatedOrders = b2bOrders.map((order) => {
+        const erpOrder = erpOrders.find((erpOrder) => erpOrder.b2bOrderId === order.orderId);
+        return {
+          ...order,
+          erpStatus: erpOrder?.status,
+        };
+      });
+      setOrders(updatedOrders);
     });
   }, [erpToken, b2bOrders]);
 
-  // TODO: Update type info for `item` to `OverviewOrderWithErpStatus`
   const orderColumns = [
     {
       key: 'orderId',
@@ -83,19 +81,27 @@ export default function RecentOrders({
     {
       key: 'totalIncTax',
       title: b3Lang('orders.grandTotal'),
-      render: (item: OverviewOrder) => {
+      render: (item: OverviewOrderWithErpStatus) => {
         return currencyFormat(item.totalIncTax);
       },
     },
     {
       key: 'createdAt',
       title: b3Lang('orders.createdOn'),
-      render: (item: OverviewOrder) => {
+      render: (item: OverviewOrderWithErpStatus) => {
         return `${displayFormat(Number(item.createdAt))}`;
       },
     },
-    // TODO: Add a new column for `erpStatus`
-    //  - The custom `render` function should render a `CircularProgress` component until `erpStatus` has a value
+    {
+      key: 'erpStatus',
+      title: b3Lang('overview.orders.status'),
+      render: (item: OverviewOrderWithErpStatus) => {
+        if (!item.erpStatus) {
+          return <CircularProgress size={16} />;
+        }
+        return item.erpStatus;
+      },
+    },
   ];
 
   return (
