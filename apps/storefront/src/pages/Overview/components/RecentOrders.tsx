@@ -35,7 +35,7 @@ const mockOrders = [
 ];
 
 interface OrdersProps {
-  // TODO: Add the `startLoad` prop, which is a boolean
+  startLoad: boolean;
   setOpenPage: SetOpenPage;
 }
 
@@ -43,7 +43,7 @@ interface OrdersProps {
 // and adds an optional `erpStatus` field
 
 export default function RecentOrders({
-  // TODO: Add the `startLoad` prop to allow the parent component to control when data is loaded
+  startLoad,
   setOpenPage,
 }: OrdersProps) {
   // TODO: Get the token needed for ERP API calls with `useErpToken`
@@ -55,10 +55,10 @@ export default function RecentOrders({
   // TODO: Create a `loading` state value to track the loading state of the orders
 
   useEffect(() => {
-    // TODO: Return without doing anything if `startLoad` is false, meaning the parent component hasn't triggered the loading
+    if (!startLoad) return;
 
     setOrders(mockOrders);
-  }, []); // TODO Update the effect dependencies to include `startLoad`
+  }, [startLoad]);
 
   // TODO: Use `useEffect` to inspect the value of the ERP token
 
