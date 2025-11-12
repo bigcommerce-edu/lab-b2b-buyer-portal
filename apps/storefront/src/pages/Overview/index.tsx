@@ -19,6 +19,7 @@ import { useB3Lang } from "@/lib/lang";
 
 export default function Overview() {
   const b3Lang = useB3Lang();
+  const navigate = useNavigate();
 
   const { getOrderPermission } = useAppSelector(rolePermissionSelector);
 
@@ -44,10 +45,7 @@ export default function Overview() {
           xs={12}
         >
           <h3>Recent Orders Placeholder</h3>
-          {/* TODO: Add a button to navigate to the orders page with `navigate`
-                - `navigate` comes from React Router's `useNavigate` hook
-                - `HeadlessRoutes` includes a constant (`COMPANY_ORDERS`) with the main orders page route
-          */}
+          <Button onClick={() => navigate(HeadlessRoutes.COMPANY_ORDERS)}>{b3Lang('overview.allOrders')}</Button>
         </Grid>
         )}
       </Grid>
