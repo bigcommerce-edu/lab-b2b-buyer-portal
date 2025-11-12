@@ -55,8 +55,10 @@ export default function RecentOrders({
   // TODO: Create a `loading` state value to track the loading state of the orders
 
   useEffect(() => {
+    // TODO: Return without doing anything if `startLoad` is false, meaning the parent component hasn't triggered the loading
+
     setOrders(mockOrders);
-  }, []);
+  }, []); // TODO Update the effect dependencies to include `startLoad`
 
   // TODO: Use `useEffect` to inspect the value of the ERP token
 
