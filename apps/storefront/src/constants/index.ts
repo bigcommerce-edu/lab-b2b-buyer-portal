@@ -31,7 +31,7 @@ export enum HeadlessRoutes {
   DRAFT_QUOTE = '/quoteDraft',
   SHOPPING_LISTS = '/shoppingLists',
   DASHBOARD = '/dashboard',
-  // TODO: Add a constant for `OVERVIEW`, so that headless scripts can easily open this page
+  OVERVIEW = '/overview',
   ORDERS = '/orders',
   COMPANY_ORDERS = '/company-orders',
   QUOTES = '/quotes',
