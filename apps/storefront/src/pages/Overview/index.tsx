@@ -20,9 +20,7 @@ import { useB3Lang } from "@/lib/lang";
 export default function Overview() {
   const b3Lang = useB3Lang();
 
-  // TODO: Get the user's permissions from the Redux store
-  //  - Use `useAppSelector` with the `rolePermissionSelector` selector
-  //  - Destructure `getOrderPermission` from the result
+  const { getOrderPermission } = useAppSelector(rolePermissionSelector);
 
   return (
     <>
@@ -38,7 +36,8 @@ export default function Overview() {
           <h3>Logged-in User Information Placeholder</h3>
         </Grid>
 
-        {/* TODO: Make the rendering of recent orders conditional on `getOrderPermission` */}
+        {/* TRY: Log in as a Junior Buyer user to verify that Recent Orders does not show */}
+        {getOrderPermission && (
         <Grid
           item
           key="recent-orders"
@@ -46,6 +45,7 @@ export default function Overview() {
         >
           <h3>Recent Orders Placeholder</h3>
         </Grid>
+        )}
       </Grid>
     </>
   );
