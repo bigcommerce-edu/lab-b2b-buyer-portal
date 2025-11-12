@@ -29,9 +29,31 @@ export const getThemeConfig = (theme: Theme) => {
         fontSize: '1rem',
       },
     },
-    // TODO: Add component-specific theme directives
-    //  - MuiAccordion: Override the background color style to use the primary light color
-    //  - MuiButton: Override the default props to use the 'contained' variant and add a margin of 5px
-    //  - MuiIconButton: Override the color style to use the primary main color
+    components: {
+      MuiAccordion: {
+        styleOverrides: {
+          root: {
+            backgroundColor: theme.palette.primary.light,
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: {
+          variant: 'contained',
+        },
+        styleOverrides: {
+          root: {
+            margin: '5px',
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            color: theme.palette.primary.main,
+          },
+        },
+      },
+    },
   } as ThemeOptions;
 }
