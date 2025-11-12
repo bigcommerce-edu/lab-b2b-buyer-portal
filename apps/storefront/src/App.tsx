@@ -369,10 +369,12 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
+    // TODO: Add a condition to make sure `erpToken` is not yet set
     if (b2bToken && companyId) {  
       initErp({ 
         b2bToken, 
         companyId,
+        // TODO: Pass the `storeDispatch` function as `appDispatch` parameter
       });
     }
   }, [b2bToken, companyId])

@@ -21,6 +21,8 @@ const initErp = ({
   }).then((erpToken) => {
     // TODO: Remove this console.log after implementing dispatch
     console.log('erpToken', erpToken);
+
+    // TODO: Dispatch the `setErpToken` action with the `erpToken` value
   });
 };
 
