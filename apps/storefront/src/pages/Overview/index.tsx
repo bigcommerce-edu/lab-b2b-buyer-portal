@@ -14,6 +14,7 @@ import { newPermissions } from "@/shared/routes/config";
 import { type SetOpenPage } from '@/pages/SetOpenPage';
 
 import Identity from "./components/Identity";
+import RecentOrders from "./components/RecentOrders";
 
 import { useB3Lang } from "@/lib/lang";
 
@@ -55,11 +56,9 @@ export default function Overview({
           key="recent-orders"
           xs={12}
         >
-          {/* TODO: Replace the placeholder with `RecentOrders` 
-                - Pass the `setOpenPage` function this page component received
-          */}
-          <h3>Recent Orders Placeholder</h3>
-          <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.COMPANY_ORDERS })}>{b3Lang('overview.allOrders')}</Button>
+          <RecentOrders
+            setOpenPage={setOpenPage}
+          />
         </Grid>
         )}
       </Grid>
