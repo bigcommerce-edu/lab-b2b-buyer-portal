@@ -26,10 +26,11 @@ export default function Overview({
 
   // TODO: Create a boolean `ordersOpen` state value to track the open state of the orders accordion
 
-  // TODO: Set `allowOrders` based on the result of `validatePermissionWithComparisonType`
-  //  - Pass a `code` to check against: the `ordersPermissionCodes` value from `newPermissions`
-  //  - Pass a `level` to check (user-level or company-level): The `COMPANY` constant from `permissionLevels`
-  //  - Pass a `containOrEqual` value of "contain"
+  const allowOrders = validatePermissionWithComparisonType({
+    code: newPermissions.ordersPermissionCodes,
+    level: permissionLevels.COMPANY,
+    containOrEqual: 'contain',
+  });
 
   return (
     <>
@@ -46,7 +47,8 @@ export default function Overview({
           <h3>Logged-in User Information Placeholder</h3>
         </Grid>
 
-        {/* TODO: Make the rendering of recent orders conditional on `allowOrders` */}
+        {/* TRY: Log in as a Junior Buyer user to verify that Recent Orders does not show */}
+        {allowOrders && (
         <Grid
           item
           key="recent-orders"
@@ -60,6 +62,7 @@ export default function Overview({
                 - `HeadlessRoutes` includes a constant (`COMPANY_ORDERS`) with the main orders page route
           */}
         </Grid>
+        )}
       </Grid>
     </>
   );
