@@ -13,8 +13,16 @@ const allLegacyPermission = [
 ];
 const legacyPermissions = {
   dashboardPermissions: [CustomerRole.SUPER_ADMIN, CustomerRole.SUPER_ADMIN_BEFORE_AGENCY],
-  // TODO: Add `overviewPermissions`
-  //  - This should mimic `ordersPermissions`, including all roles
+  overviewPermissions: [
+    CustomerRole.SUPER_ADMIN,
+    CustomerRole.SUPER_ADMIN_BEFORE_AGENCY,
+    CustomerRole.ADMIN,
+    CustomerRole.SENIOR_BUYER,
+    CustomerRole.JUNIOR_BUYER,
+    CustomerRole.CUSTOM_ROLE,
+    CustomerRole.B2C,
+    CustomerRole.GUEST,
+  ],
   ordersPermissions: [
     CustomerRole.SUPER_ADMIN,
     CustomerRole.SUPER_ADMIN_BEFORE_AGENCY,
@@ -112,9 +120,7 @@ const denyInvoiceRoles = [
 ];
 
 const newPermissions = {
-  // TODO: Add `overviewPermissionCodes`
-  //  - We're not going to add our own custom B2B permissions, so use the most permissive
-  //    of the permissions the Overview page will use: `getShoppingListPermission`
+  overviewPermissionCodes: b2bPermissionsMap.getShoppingListPermission,
   ordersPermissionCodes: b2bPermissionsMap.getOrderPermission,
   companyOrdersPermissionCodes: b2bPermissionsMap.getOrderPermission,
   invoicePermissionCodes: b2bPermissionsMap.getInvoicesPermission,
