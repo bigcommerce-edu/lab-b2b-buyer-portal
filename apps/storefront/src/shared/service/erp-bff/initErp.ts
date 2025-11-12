@@ -1,15 +1,16 @@
 import { fetchStorefrontToken } from "@/shared/service/erp-bff";
 import { AppDispatch } from "@/store";
+import { setErpToken } from "@/store/slices/erp";
 import { storeHash } from "@/utils";
 
 const initErp = ({ 
   b2bToken, 
   companyId,
-  // TODO: Add a parameter called `appDispatch`
+  appDispatch,
 }: { 
   b2bToken: string, 
   companyId: string,
-  // TODO: Type `appDispatch` as `AppDispatch`
+  appDispatch: AppDispatch
 }) => {
   if (!b2bToken || !companyId) return;
 
@@ -19,10 +20,8 @@ const initErp = ({
     b2bCompanyId: companyId,
     storeHash,
   }).then((erpToken) => {
-    // TODO: Remove this console.log after implementing dispatch
-    console.log('erpToken', erpToken);
-
-    // TODO: Dispatch the `setErpToken` action with the `erpToken` value
+    // TRY: View session storage in your browser tools to see the "persist:erp" value
+    appDispatch(setErpToken(erpToken));
   });
 };
 
