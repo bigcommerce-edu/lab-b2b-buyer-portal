@@ -54,8 +54,11 @@ export default function RecentOrders({
   // TODO: Create a `loading` state value to track the loading state of the orders
 
   useEffect(() => {
+    // TODO: Add a condition: Also return if `loading` is false, meaning the orders have already been loaded
     if (!startLoad) return;
 
+    // TODO: Swap mock data with the actual B2B Edition order data
+    //  - Use `getRecentOrders` to fetch orders
     setOrders(mockOrders);
   }, [startLoad]);
 
@@ -90,6 +93,7 @@ export default function RecentOrders({
   ];
 
   return (
+    // TODO: Use `loading` state to control the spinning state of the `B3Spin` component
     <B3Spin isSpinning={false}>
       <OverviewCard>
         <CardContent>
