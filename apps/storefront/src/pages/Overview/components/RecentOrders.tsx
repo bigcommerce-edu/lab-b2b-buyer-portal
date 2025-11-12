@@ -32,6 +32,9 @@ export default function RecentOrders({
   // TODO: Get the token needed for ERP API calls with `useErpToken`
   
   const b3Lang = useB3Lang();
+
+  // TODO: Create a new state value called `b2bOrders` that stores the initial order records 
+  // with only B2B Edition data
   
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
@@ -41,6 +44,7 @@ export default function RecentOrders({
     if (!startLoad || !loading) return;
 
     getRecentOrders().then((b2bOrders) => {
+      // TODO: Also set the `b2bOrders` state value to trigger loading third-party data
       setOrders(b2bOrders);
       setLoading(false);
     });
