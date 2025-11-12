@@ -9,8 +9,9 @@ const hasPermission = (key: keyof B2BPermissionsMapParams): boolean => {
 };
 
 export const b2bJumpPath = (role: number): string => {
-  // TODO: Before all other conditions, set the main page to `PATH_ROUTES.OVERVIEW` 
-  // if the user has the shopping list permission
+  if (hasPermission('getShoppingListPermission')) {
+    return PATH_ROUTES.OVERVIEW;
+  }
 
   if (role === CustomerRole.JUNIOR_BUYER) {
     return PATH_ROUTES.SHOPPING_LISTS;
@@ -18,11 +19,6 @@ export const b2bJumpPath = (role: number): string => {
 
   if (hasPermission('getOrderPermission')) {
     return PATH_ROUTES.ORDERS;
-  }
-
-  // TODO: Remove this, since we've already handled the case when a user has the shopping list permission
-  if (hasPermission('getShoppingListPermission')) {
-    return PATH_ROUTES.SHOPPING_LISTS;
   }
 
   return PATH_ROUTES.ACCOUNT_SETTINGS;
