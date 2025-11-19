@@ -8,9 +8,16 @@ const initErp = async ({
   b2bToken: string, 
   companyId: string,
 }) => {
-  // TODO: Use `fetchStorefrontToken` to get the token and log the result
-  //  - If `b2bToken` or `companyId` is not provided, return immediately
-  throw new Error('initErp not implemented');
+  if (!b2bToken || !companyId) return;
+
+  // TRY: Watch the console in your browser tools to see the mock token request/response
+  const token = await fetchStorefrontToken({
+    b2bToken,
+    b2bCompanyId: companyId,
+    storeHash,
+  });
+
+  return token;
 };
 
 export { initErp };
