@@ -34,6 +34,11 @@ function B3ThemeProvider({ children }: Props) {
     },
   } = useContext(CustomStyleContext);
 
+  // TODO: Apply custom theme config on top of this base config
+  //  - Convert this from a short-hand return to a full function
+  //  - Capture the first results of `createTheme` in a variable
+  //  - Pass the first theme object to `getThemeConfig` and pass this to a second `createTheme` call
+  //  - Return the final theme object
   const theme = (lang: string) =>
     createTheme(
       {
