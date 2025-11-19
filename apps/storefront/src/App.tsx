@@ -39,6 +39,7 @@ import {
 } from './store';
 
 import { initErp } from '@/shared/service/erp-bff/initErp';
+import { selectErpToken, setErpToken } from '@/store/slices/erp';
 
 const B3GlobalTip = lazy(() => import('@/components/B3GlobalTip'));
 
@@ -82,9 +83,7 @@ export default function App() {
 
   const b2bToken = useAppSelector(({ company }) => company.tokens.B2BToken);
   const companyId = useAppSelector(({ company }) => company.companyInfo.id);
-
-  // TODO: Get the `erpToken` value from the Redux store
-  //  - This use of `useAppSelector` can directly use the `selectErpToken` selector from the `erp` slice
+  const erpToken = useAppSelector(selectErpToken);
 
   const authorizedPages = useMemo(() => {
     return isB2BUser ? b2bJumpPath(role) : PATH_ROUTES.ORDERS;
@@ -369,16 +368,15 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
-    // TODO: Add a condition to make sure `erpToken` is not yet set
-    if (b2bToken && companyId) {  
+    if (b2bToken && companyId && !erpToken) {  
       initErp({ 
         b2bToken, 
         companyId,
       }).then((token) => {
-        // TODO: Remove this console.log after implementing dispatch
-        console.log('erpToken', token);
-
-        // TODO: Dispatch the `setErpToken` action with the `token` value to store it in the app state
+        if (token) {
+          // TRY: View session storage in your browser tools to see the "persist:erp" value
+          storeDispatch(setErpToken(token));
+        }
       });
     }
   }, [b2bToken, companyId]);
