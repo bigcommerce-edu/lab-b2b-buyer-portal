@@ -369,6 +369,7 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
+    // TODO: Add a condition to make sure `erpToken` is not yet set
     if (b2bToken && companyId) {  
       initErp({ 
         b2bToken, 
@@ -376,6 +377,8 @@ export default function App() {
       }).then((token) => {
         // TODO: Remove this console.log after implementing dispatch
         console.log('erpToken', token);
+
+        // TODO: Dispatch the `setErpToken` action with the `token` value to store it in the app state
       });
     }
   }, [b2bToken, companyId]);
