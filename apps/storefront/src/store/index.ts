@@ -13,6 +13,8 @@ export * from './slices/b2bFeatures';
 export * from './slices/quoteInfo';
 export * from './slices/storeInfo';
 
+// TODO: Add the `erp` slice to the export
+
 export { reducer };
 
 export const middlewareOptions = {
