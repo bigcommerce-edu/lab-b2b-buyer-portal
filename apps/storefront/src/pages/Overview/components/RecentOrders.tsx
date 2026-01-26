@@ -30,7 +30,7 @@ export default function RecentOrders({
   startLoad,
   setOpenPage,
 }: OrdersProps) {
-  // TODO: Get the token needed for ERP API calls with `useErpToken`
+  const erpToken = useErpToken();
   
   const b3Lang = useB3Lang();
   
@@ -47,7 +47,11 @@ export default function RecentOrders({
     });
   }, [startLoad, loading]);
 
-  // TODO: Use `useEffect` to inspect the value of the ERP token
+  useEffect(() => {
+    if (!erpToken) return;
+    
+    console.log('erpToken', erpToken);
+  }, [erpToken]);
 
   const orderColumns = [
     {
