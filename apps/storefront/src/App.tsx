@@ -39,6 +39,7 @@ import {
   useAppSelector,
 } from './store';
 
+// TODO: Update this URL to load a different base Google font
 const FONT_URL = 'https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap';
 
 export default function App() {
@@ -62,6 +63,12 @@ export default function App() {
   const bcGraphqlToken = useAppSelector(({ company }) => company.tokens.bcGraphqlToken);
   const { quotesCreateActionsPermission, shoppingListCreateActionsPermission } =
     useAppSelector(rolePermissionSelector);
+
+  // TODO: Get the `b2bToken` and `companyId` values from the Redux store
+  //  - Use `useAppSelector` with callback functions to access the `company` value from the store
+
+  // TODO: Get the `erpToken` value from the Redux store
+  //  - This use of `useAppSelector` can directly use the `selectErpToken` selector from the `erp` slice
 
   const authorizedPages = useMemo(() => {
     return isB2BUser ? b2bJumpPath(role) : PATH_ROUTES.ORDERS;
@@ -351,6 +358,8 @@ export default function App() {
 
     setCustomStyle(newStyle);
   }, [cssOverride?.css, CUSTOM_STYLES]);
+
+  // TODO: Use a side effect to test setting the ERP token in global state
 
   return (
     <>
