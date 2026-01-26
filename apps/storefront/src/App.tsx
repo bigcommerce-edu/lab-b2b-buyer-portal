@@ -361,7 +361,13 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
-    // TRY: View session storage in your browser tools to see the "persist:erp" value
+    // TODO: Initialize the ERP token
+    //  - Effect should depend on the values of `b2bToken`, `companyId`
+    //  - Effect should do nothing if `erpToken` is already set
+    //  - If `b2bToken` and `companyId` exist, call `initErp` with the values to get the ERP token
+    //  - Dispatch the `setErpToken` action with the token value
+    
+    // TRY: View session storage in your browser tools to see the "persist:erp" value    
     storeDispatch(setErpToken('test token'));
   }, [storeDispatch]);
 
