@@ -8,6 +8,7 @@ import quoteInfo from './slices/quoteInfo';
 import storeConfigs from './slices/storeConfigs';
 import storeInfo from './slices/storeInfo';
 import theme from './slices/theme';
+import erp from './slices/erp';
 
 export const reducer = combineReducers({
   global,
@@ -18,5 +19,5 @@ export const reducer = combineReducers({
   b2bFeatures,
   quoteInfo,
   storeInfo,
-  // TODO: Add the `erp` slice to the reducer
+  erp,
 });
