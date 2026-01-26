@@ -39,7 +39,8 @@ import {
   useAppSelector,
 } from './store';
 
-import { setErpToken } from '@/store';
+import { selectErpToken, setErpToken } from '@/store';
+import { initErp } from '@/shared/service/erp-bff/initErp';
 
 const FONT_URL = 'https://fonts.googleapis.com/css?family=Montserrat:700,500,400&display=block';
 
@@ -65,11 +66,9 @@ export default function App() {
   const { quotesCreateActionsPermission, shoppingListCreateActionsPermission } =
     useAppSelector(rolePermissionSelector);
 
-  // TODO: Get the `b2bToken` and `companyId` values from the Redux store
-  //  - Use `useAppSelector` with callback functions to access the `company` value from the store
-
-  // TODO: Get the `erpToken` value from the Redux store
-  //  - This use of `useAppSelector` can directly use the `selectErpToken` selector from the `erp` slice
+  const b2bToken = useAppSelector(({ company }) => company.tokens.B2BToken);
+  const companyId = useAppSelector(({ company }) => company.companyInfo.id);
+  const erpToken = useAppSelector(selectErpToken);
 
   const authorizedPages = useMemo(() => {
     return isB2BUser ? b2bJumpPath(role) : PATH_ROUTES.ORDERS;
@@ -361,15 +360,18 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
-    // TODO: Initialize the ERP token
-    //  - Effect should depend on the values of `b2bToken`, `companyId`
-    //  - Effect should do nothing if `erpToken` is already set
-    //  - If `b2bToken` and `companyId` exist, call `initErp` with the values to get the ERP token
-    //  - Dispatch the `setErpToken` action with the token value
-    
-    // TRY: View session storage in your browser tools to see the "persist:erp" value    
-    storeDispatch(setErpToken('test token'));
-  }, [storeDispatch]);
+    if (b2bToken && companyId && !erpToken) {  
+      initErp({ 
+        b2bToken, 
+        companyId,
+      }).then((token) => {
+        if (token) {
+          // TRY: View session storage in your browser tools to see the "persist:erp" value
+          storeDispatch(setErpToken(token));
+        }
+      });
+    }
+  }, [storeDispatch, b2bToken, companyId]);
 
   return (
     <>
