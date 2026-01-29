@@ -27,13 +27,54 @@ export default function Identity() {
 
   const b3Lang = useB3Lang();
 
-  // TODO: Implement the JSX
-  //  - Wrap the entire contents in a `Box`, using `sx` for basic `overflowX` and `paddingX` styles
-  //  - Output a `Grid` container with 3 `Grid` items
-  //    - Use the `xs` and `lg` properties on `Grid` items to control the layout for different screen sizes
-  //  - In each `Grid` item, render a `Card` with a `CardHeader` and `CardContent`
-  //  - Item 1 should display the user's first and last name
-  //  - Item 2 should display the company name
-  //  - Item 3 should display the user role name
-  throw new Error('Identity component not implemented');
+  return <>
+    <Box
+      sx={{
+        overflowX: 'auto',
+        paddingX: {
+          xs: '10px',
+          lg: '60px',
+        },
+        paddingY: {
+          xs: '10px',
+          lg: '20px',
+        },
+        backgroundColor: '#fff',
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: 'primary.main',
+        borderRadius: '30px',
+      }}
+    >
+      <Grid
+        container
+        spacing={3}
+      >
+        <Grid item xs={12} lg={4}>
+          <Card>
+            <CardHeader title={b3Lang('identity.user')} />
+            <CardContent>
+              {firstName} {lastName}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} lg={4}>
+          <Card>
+            <CardHeader title={b3Lang('identity.company')} />
+            <CardContent>
+              {companyName}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} lg={4}>
+          <Card>
+            <CardHeader title={b3Lang('identity.role')} />
+            <CardContent>
+              {companyRoleName}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  </>;
 }
