@@ -13,6 +13,8 @@ import { validatePermissionWithComparisonType } from '@/utils/b3CheckPermissions
 import { newPermissions } from "@/shared/routes/config";
 import { type SetOpenPage } from '@/pages/SetOpenPage';
 
+import Identity from "./components/Identity";
+
 import { useB3Lang } from "@/lib/lang";
 
 interface OverviewProps {
@@ -43,8 +45,7 @@ export default function Overview({
           key="overview"
           xs={12}
         >
-          {/* TODO: Replace the placeholder with `Identity` */}
-          <h3>Logged-in User Information Placeholder</h3>
+          <Identity />
         </Grid>
 
         {/* TRY: Log in as a Junior Buyer user to verify that Recent Orders does not show */}
