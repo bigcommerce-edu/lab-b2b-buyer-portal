@@ -39,8 +39,7 @@ import {
   useAppSelector,
 } from './store';
 
-// TODO: Update this URL to load a different base Google font
-const FONT_URL = 'https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap';
+const FONT_URL = 'https://fonts.googleapis.com/css?family=Montserrat:700,500,400&display=block';
 
 export default function App() {
   const showPageMask = usePageMask();

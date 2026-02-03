@@ -5,6 +5,8 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { CustomStyleContext } from './shared/customStyleButton';
 import { BROWSER_LANG } from './constants';
 
+import { getThemeConfig } from './theme-config';
+
 type LangMapType = {
   [index: string]: string;
 };
@@ -34,13 +36,8 @@ function B3ThemeProvider({ children }: Props) {
     },
   } = useContext(CustomStyleContext);
 
-  // TODO: Apply custom theme config on top of this base config
-  //  - Convert this from a short-hand return to a full function
-  //  - Capture the first results of `createTheme` in a variable
-  //  - Pass the first theme object to `getThemeConfig` and pass this to a second `createTheme` call
-  //  - Return the final theme object
-  const theme = (lang: string) =>
-    createTheme(
+  const theme = (lang: string) => {
+    let t = createTheme(
       {
         palette: {
           background: {
@@ -53,6 +50,14 @@ function B3ThemeProvider({ children }: Props) {
       },
       (materialMultiLanguages as MaterialMultiLanguagesType)[MUI_LANG_MAP[lang] || 'enUS'],
     );
+
+    t = createTheme(
+      getThemeConfig(t),
+      (materialMultiLanguages as MaterialMultiLanguagesType)[MUI_LANG_MAP[lang] || 'enUS'],
+    );
+
+    return t;
+  };
 
   return <ThemeProvider theme={theme(BROWSER_LANG)}>{children}</ThemeProvider>;
 }
