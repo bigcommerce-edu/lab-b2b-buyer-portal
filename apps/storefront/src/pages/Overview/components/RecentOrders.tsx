@@ -15,24 +15,8 @@ import useErpToken from "@/shared/service/erp-bff/useErpToken";
 import { displayFormat } from "@/utils/b3DateFormat";
 import { currencyFormat } from "@/utils/b3CurrencyFormat";
 
-import { OverviewOrder } from "../data";
+import { getRecentOrders, OverviewOrder } from "../data";
 import OverviewCard from "./OverviewCard";
-
-// TODO: Remove this once real data fetching is implemented
-const mockOrders = [
-  {
-    orderId: '1234567890',
-    poNumber: '12345',
-    totalIncTax: 1000,
-    createdAt: 1761592667,
-  },
-  {
-    orderId: '1234567891',
-    poNumber: '12346',
-    totalIncTax: 4500,
-    createdAt: 1761595667,
-  },
-];
 
 interface OrdersProps {
   startLoad: boolean;
@@ -52,16 +36,16 @@ export default function RecentOrders({
   
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
-  // TODO: Create a `loading` state value to track the loading state of the orders
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: Add a condition: Also return if `loading` is false, meaning the orders have already been loaded
-    if (!startLoad) return;
+    if (!startLoad || !loading) return;
 
-    // TODO: Swap mock data with the actual B2B Edition order data
-    //  - Use `getRecentOrders` to fetch orders
-    setOrders(mockOrders);
-  }, [startLoad]);
+    getRecentOrders().then((b2bOrders) => {
+      setOrders(b2bOrders);
+      setLoading(false);
+    });
+  }, [startLoad, loading]);
 
   // TODO: Use `useEffect` to inspect the value of the ERP token
 
@@ -91,8 +75,7 @@ export default function RecentOrders({
   ];
 
   return (
-    // TODO: Use `loading` state to control the spinning state of the `B3Spin` component
-    <B3Spin isSpinning={false}>
+    <B3Spin isSpinning={loading}>
       <OverviewCard>
         <CardContent>
           <B3Table
