@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Button,
   Grid,
   Accordion,
   AccordionSummary,
@@ -8,20 +7,18 @@ import {
   Typography,
 } from "@mui/material";
 import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
-import { HeadlessRoutes } from "@/constants";
 import {
   rolePermissionSelector,
   useAppSelector,
 } from '@/store';
 
 import Identity from "./components/Identity";
+import RecentOrders from "./components/RecentOrders";
 
 import { useB3Lang } from "@/lib/lang";
 
 export default function Overview() {
   const b3Lang = useB3Lang();
-  const navigate = useNavigate();
 
   const { getOrderPermission } = useAppSelector(rolePermissionSelector);
 
@@ -46,9 +43,8 @@ export default function Overview() {
           key="recent-orders"
           xs={12}
         >
-          {/* TODO: Replace the placeholder with `RecentOrders` */}
-          <h3>Recent Orders Placeholder</h3>
-          <Button onClick={() => navigate(HeadlessRoutes.COMPANY_ORDERS)}>{b3Lang('overview.allOrders')}</Button>
+          <RecentOrders
+          />
         </Grid>
         )}
       </Grid>
