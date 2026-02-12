@@ -36,7 +36,7 @@ const mockOrders = [
 
 interface OrdersProps {
   // TODO: Add the `startLoad` prop, which is a boolean
-  // TODO: Add the `setOpenPage` prop, which is an instance of `SetOpenPage`
+  setOpenPage: SetOpenPage;
 }
 
 // TODO Create an interface called `OverviewOrderWithErpStatus` that extends `OverviewOrder` 
@@ -44,7 +44,7 @@ interface OrdersProps {
 
 export default function RecentOrders({
   // TODO: Add the `startLoad` prop to allow the parent component to control when data is loaded
-  // TODO: We need a `setOpenPage` prop to get a function used to change the Buyer Portal page
+  setOpenPage,
 }: OrdersProps) {
   // TODO: Get the token needed for ERP API calls with `useErpToken`
   
@@ -54,23 +54,54 @@ export default function RecentOrders({
 
   // TODO: Create a `loading` state value to track the loading state of the orders
 
-  // TODO: Use `useEffect` to fetch/set order data when component first mounts
-  //  - Initially, use `mockOrders` to set the value of `orders`
+  useEffect(() => {
+    setOrders(mockOrders);
+  }, []);
 
   // TODO: Use `useEffect` to inspect the value of the ERP token
 
-  // TODO: Create an `orderColumns` array to define the columns for the table
-  //  - Include a unique key (matching the GraphQL response field) and a title for each column
-  //  - Include columns for `orderId`, `poNumber`, `totalIncTax`, and `createdAt`
-  //  - `totalInclTax` needs a custom `render` function to use currency formatting for the value
-  //  - `createdAt` needs a custom `render` function to use date formatting for the value
+  const orderColumns = [
+    {
+      key: 'orderId',
+      title: b3Lang('orders.order'),
+    },
+    {
+      key: 'poNumber',
+      title: b3Lang('orders.poReference'),
+    },
+    {
+      key: 'totalIncTax',
+      title: b3Lang('orders.grandTotal'),
+      render: (item: OverviewOrder) => {
+        return currencyFormat(item.totalIncTax);
+      },
+    },
+    {
+      key: 'createdAt',
+      title: b3Lang('orders.createdOn'),
+      render: (item: OverviewOrder) => {
+        return `${displayFormat(Number(item.createdAt))}`;
+      },
+    },
+  ];
 
-  // TODO: Implement the JSX
-  //  - Use `B3Spin` as a wrapper to eventually control loading feedback
-  //  - Use `OverviewCard` with a `CardContent`
-  //  - Render a `B3Table`
-  //    - Use the `orders` state as the value of `listItems`
-  //    - Use `orderColumns` as the value of `columnItems`
-  //    - The `onClickRow` behavior should use `setOpenPage` to navigate to the route /orderDetail/{item.orderId}
-  throw new Error('RecentOrders not implemented');
+  return (
+    <B3Spin isSpinning={false}>
+      <OverviewCard>
+        <CardContent>
+          <B3Table
+            tableFixed={true}
+            columnItems={orderColumns}
+            listItems={orders}
+            tableKey="orderId"
+            showPagination={false}
+            onClickRow={(item) => {
+              setOpenPage({ isOpen: true, openUrl: `/orderDetail/${item.orderId}` });
+            }}
+          />
+          <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.COMPANY_ORDERS })}>{b3Lang('overview.allOrders')}</Button>
+        </CardContent>
+      </OverviewCard>
+    </B3Spin>
+  );
 }
