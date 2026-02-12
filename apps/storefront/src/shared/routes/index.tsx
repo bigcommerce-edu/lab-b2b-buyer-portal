@@ -20,6 +20,7 @@ import {
 
 import { allLegacyPermission, denyInvoiceRoles } from './config';
 
+// TODO: Add the lazy import of the `Overview` component
 const AccountSetting = lazy(() => import('@/pages/AccountSetting'));
 const AddressList = lazy(() => import('@/pages/AddressList'));
 const CompanyOrderList = lazy(() => import('@/pages/CompanyOrderList'));
@@ -44,6 +45,7 @@ const UserManagement = lazy(() => import('@/pages/UserManagement'));
 const CompanyHierarchy = lazy(() => import('@/pages/CompanyHierarchy'));
 
 const routesMap: Record<string, LazyExoticComponent<(props: PageProps) => ReactElement>> = {
+  // TODO: Add the Overview component mapping
   '/dashboard': Dashboard,
   '/orders': MyOrders,
   '/company-orders': CompanyOrderList,

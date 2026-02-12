@@ -18,4 +18,5 @@ export const reducer = combineReducers({
   b2bFeatures,
   quoteInfo,
   storeInfo,
+  // TODO: Add the `erp` slice to the reducer
 });
