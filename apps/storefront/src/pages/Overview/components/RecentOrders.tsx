@@ -23,8 +23,9 @@ interface OrdersProps {
   setOpenPage: SetOpenPage;
 }
 
-// TODO Create an interface called `OverviewOrderWithSupportCaseStatus` that extends `OverviewOrder` 
-// and adds an optional `supportCaseStatus` field
+interface OverviewOrderWithSupportCaseStatus extends OverviewOrder {
+  supportCaseStatus?: string;
+}
 
 export default function RecentOrders({
   startLoad,
@@ -35,9 +36,7 @@ export default function RecentOrders({
   const b3Lang = useB3Lang();
 
   const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
-  // TODO: Change the type of `orders` to `OverviewOrderWithSupportCaseStatus` to account for added CRM field
-  const [orders, setOrders] = useState<OverviewOrder[]>([]);
-
+  const [orders, setOrders] = useState<OverviewOrderWithSupportCaseStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,18 +58,17 @@ export default function RecentOrders({
         b2bOrderIds: b2bOrders.map((order) => order.orderId),
       },
     }).then((crmCases) => {
-      // TODO: Remove this console.log after implementing the main logic
-      console.log(crmCases);
-
-      // TODO: Add `supportCaseStatus` field to each order record and update the main `orders` state value
-      //  - Use `map` to loop through all `b2bOrders`
-      //  - Find the record in `crmCases` with a `b2bOrderId` matching the current order's `orderId`
-      //  - Return a new object with the original order data and the CRM case status
-      //  - Set the new value to the `orders` state
+      const updatedOrders = b2bOrders.map((order) => {
+        const crmCase = crmCases.find((crmCase) => crmCase.b2bOrderId === order.orderId);
+        return {
+          ...order,
+          supportCaseStatus: crmCase?.status,
+        };
+      });
+      setOrders(updatedOrders);
     });
   }, [crmToken, b2bOrders]);
 
-  // TODO: Update type info for `item` to `OverviewOrderWithSupportCaseStatus`
   const orderColumns = [
     {
       key: 'orderId',
@@ -83,19 +81,27 @@ export default function RecentOrders({
     {
       key: 'totalIncTax',
       title: b3Lang('orders.grandTotal'),
-      render: (item: OverviewOrder) => {
+      render: (item: OverviewOrderWithSupportCaseStatus) => {
         return currencyFormat(item.totalIncTax);
       },
     },
     {
       key: 'createdAt',
       title: b3Lang('orders.createdOn'),
-      render: (item: OverviewOrder) => {
+      render: (item: OverviewOrderWithSupportCaseStatus) => {
         return `${displayFormat(Number(item.createdAt))}`;
       },
     },
-    // TODO: Add a new column for `supportCaseStatus`
-    //  - The custom `render` function should render a `CircularProgress` component until `supportCaseStatus` has a value
+    {
+      key: 'supportCaseStatus',
+      title: b3Lang('overview.orders.supportCaseStatus'),
+      render: (item: OverviewOrderWithSupportCaseStatus) => {
+        if (!item.supportCaseStatus) {
+          return <CircularProgress size={16} />;
+        }
+        return item.supportCaseStatus;
+      },
+    },
   ];
 
   return (
