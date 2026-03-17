@@ -35,6 +35,7 @@ export interface RouteItem extends RouteItemBasic {
 
 const {
   dashboardPermissions,
+  overviewPermissions,
   ordersPermissions,
   companyOrdersPermissions,
   invoicePermissions,
@@ -52,6 +53,7 @@ const {
 } = legacyPermissions;
 
 const {
+  overviewPermissionCodes,
   ordersPermissionCodes,
   companyOrdersPermissionCodes,
   invoicePermissionCodes,
@@ -77,6 +79,12 @@ export const routeList: (BuyerPortalRoute | RouteItem)[] = [
     isTokenLogin: true,
     idLang: 'global.navMenu.dashboard',
   },
+  // TODO: Add configuration for Overview page route
+  //  - Path is /overview, which matches the URL hash
+  //  - Name is 'Overview'
+  //  - `isMenuItem` is true, to indicate this should show in the nav
+  //  - `permissions` is set to `overviewPermissions` and `permissionCodes` is set to `overviewPermissionCodes`
+  //  - `isTokenLogin` is true, to indicate this page requires a token to access
   {
     path: '/orders',
     name: 'My orders',
