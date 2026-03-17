@@ -1,0 +1,42 @@
+[
+  {
+    "id": "59123",
+    "status": "Open"
+  },
+  {
+    "id": "59124",
+    "status": "In Review"
+  },
+  {
+    "id": "59125",
+    "status": "Pending Customer"
+  },
+  {
+    "id": "59126",
+    "status": "No Support Case"
+  },
+  {
+    "id": "59127",
+    "status": "No Support Case"
+  },
+  {
+    "id": "59128",
+    "status": "Resolved"
+  },
+  {
+    "id": "59129",
+    "status": "Resolved"
+  },
+  {
+    "id": "59130",
+    "status": "Closed"
+  },
+  {
+    "id": "59131",
+    "status": "No Case"
+  },
+  {
+    "id": "59132",
+    "status": "In Review"
+  }
+]
