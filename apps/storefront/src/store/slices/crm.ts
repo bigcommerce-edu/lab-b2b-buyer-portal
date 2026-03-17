@@ -2,20 +2,33 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import persistReducer from 'redux-persist/es/persistReducer';
 import storageSession from 'redux-persist/lib/storage/session';
 
-// TODO: Create the `CRMState` interface
-//  - Should have a single property called `crmToken` that is a string
+export interface CRMState {
+  crmToken: string;
+}
 
-// TODO: Create `initialState` with an empty token value
+const initialState: CRMState = {
+  crmToken: '',
+};
 
-// TODO: Use `createSlice` to create the `crm` slice
-//  - Use the name `crm`
-//  - Use the `initialState` value
-//  - `reducers` should have a single reducer function called `setCrmToken`
-//  - `selectors` should have a single selector function called `selectCrmToken`
+const crmSlice = createSlice({
+  name: 'crm',
+  initialState,
+  reducers: {
+    setCrmToken: (state, { payload }: PayloadAction<string>) => {
+      state.crmToken = payload;
+    },
+  },
+  selectors: {
+    selectCrmToken: (state) => state.crmToken,
+  },
+});
 
-// TODO: Export the `setCrmToken` action using the `actions` property of the slice
+export const {
+  setCrmToken,
+} = crmSlice.actions;
 
-// TODO: Export the `selectCrmToken` selector using the `selectors` property of the slice
+export const {
+  selectCrmToken,
+} = crmSlice.selectors;
 
-// TODO: Use `persistReducer` to persist the `erp` slice with session storage
-//  - Export the result as the default export
+export default persistReducer({ key: 'crm', storage: storageSession }, crmSlice.reducer);
