@@ -25,7 +25,7 @@ interface OrdersProps {
 export default function RecentOrders({
   startLoad,
 }: OrdersProps) {
-  // TODO: Get the token needed for CRM API calls with `useCrmToken`
+  const crmToken = useCrmToken();
   
   const b3Lang = useB3Lang();
   const navigate = useNavigate();
@@ -43,7 +43,11 @@ export default function RecentOrders({
     });
   }, [startLoad, loading]);
 
-  // TODO: Use `useEffect` to inspect the value of the CRM token
+  useEffect(() => {
+    if (!crmToken) return;
+    
+    console.log('crmToken', crmToken);
+  }, [crmToken]);
 
   const orderColumns = [
     {
