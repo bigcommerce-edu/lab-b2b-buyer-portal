@@ -13,7 +13,7 @@ export * from './slices/b2bFeatures';
 export * from './slices/quoteInfo';
 export * from './slices/storeInfo';
 
-// TODO: Add the `crm` slice to the export
+export * from './slices/crm';
 
 export { reducer };
 
