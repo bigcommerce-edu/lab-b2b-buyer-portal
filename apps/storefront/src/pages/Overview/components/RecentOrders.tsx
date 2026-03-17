@@ -34,9 +34,7 @@ export default function RecentOrders({
   
   const b3Lang = useB3Lang();
 
-  // TODO: Create a new state value called `b2bOrders` that stores the initial order records 
-  // with only B2B Edition data
-  
+  const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -45,22 +43,25 @@ export default function RecentOrders({
     if (!startLoad || !loading) return;
 
     getRecentOrders().then((b2bOrders) => {
-      // TODO: Also set the `b2bOrders` state value to trigger loading third-party data
+      setB2bOrders(b2bOrders);
       setOrders(b2bOrders);
       setLoading(false);
     });
   }, [startLoad, loading]);
 
   useEffect(() => {
-    // TODO: Fetch CRM support case data for all orders
-    //  - Effect should depend on the value of `b2bOrders`
-    //  - Return immediately if `b2bOrders` is empty or there is no CRM token
-    //  - Use `crmFetchSupportCases` to fetch the CRM case data and log the result
-
-    if (!crmToken) return;
+    if (!crmToken || (b2bOrders.length <= 0)) return;
     
-    console.log('crmToken', crmToken);
-  }, [crmToken]);
+    crmFetchSupportCases({
+      token: crmToken,
+      filters: {
+        b2bOrderIds: b2bOrders.map((order) => order.orderId),
+      },
+    }).then((crmCases) => {
+      // TODO: Remove this console.log after implementing the main logic
+      console.log(crmCases);
+    });
+  }, [crmToken, b2bOrders]);
 
   const orderColumns = [
     {
