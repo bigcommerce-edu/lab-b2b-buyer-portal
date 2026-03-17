@@ -40,6 +40,8 @@ import {
   useAppSelector,
 } from './store';
 
+import { setCrmToken } from '@/store';
+
 const FONT_URL = 'https://fonts.googleapis.com/css?family=Montserrat:700,500,400&display=block';
 
 export default function App() {
@@ -368,7 +370,10 @@ export default function App() {
     setCustomStyle(newStyle);
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
-  // TODO: Use a side effect to test setting the CRM token in global state
+  useEffect(() => {
+    // TRY: View session storage in your browser tools to see the "persist:crm" value
+    storeDispatch(setCrmToken('test token'));
+  }, [storeDispatch]);
 
   return (
     <>
