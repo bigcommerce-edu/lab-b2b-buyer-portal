@@ -46,6 +46,10 @@ export interface OverviewInvoice {
   }
 }
 
+// TODO: Create `RecentOrdersResponse` interface that defines the response from the recent orders query
+//  - Should have a single property called `allOrders` that is an object with an `edges` array
+//  - Each item in the `edges` array should have a `node` property that is an `OverviewOrder`
+
 interface RecentInvoicesResponse {
   invoices: {
     edges: {
@@ -69,6 +73,10 @@ interface RecentQuotesResponse {
     }[]
   }
 }
+
+// TODO: Create the `RecentOrdersQuery` GraphQL string
+//  - Use `allOrders` and select `orderId`, `createdAt`, `totalIncTax`, `poNumber`
+//  - Accept GraphQL variables to pass to `first` and `orderBy` arguments
 
 const RecentInvoicesQuery = `
   query GetRecentInvoices(
@@ -153,6 +161,13 @@ const RecentQuotesQuery = `
     }
   }
 `;
+
+// TODO: Create `getRecentOrders` function that fetches the recent orders from the B2B Edition API
+//  - Use `B3Request.graphqlB2B` for automatic handling of the user's session/token
+//  - Use the `RecentOrdersQuery` query string
+//  - Pass GraphQL variables: a `limit` of 5 and a `sort` of "-createdAt"
+//  - Return a shallow array of order records from the response
+//    - The response will contain `allOrders` with an `edges` array, each item of which has a `node`
 
 export const getRecentInvoices = async () => {
   const resp = await B3Request.graphqlB2B({
