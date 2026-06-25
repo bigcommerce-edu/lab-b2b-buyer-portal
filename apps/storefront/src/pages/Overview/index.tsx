@@ -53,6 +53,9 @@ export default function Overview({
           key="recent-orders"
           xs={12}
         >
+          {/* TODO: Replace the placeholder with `RecentOrders` 
+                - Pass the `setOpenPage` function this page component received
+          */}
           <h3>Recent Orders Placeholder</h3>
           <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.COMPANY_ORDERS })}>{b3Lang('overview.allOrders')}</Button>
         </Grid>
