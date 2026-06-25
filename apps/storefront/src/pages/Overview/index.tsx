@@ -28,11 +28,15 @@ export default function Overview({
 
   const [ordersOpen, setOrdersOpen] = useState<boolean>(false);
 
+  // TODO: Create `*Open` state values for invoices, shopping lists, and quotes
+
   const allowOrders = validatePermissionWithComparisonType({
     code: newPermissions.ordersPermissionCodes,
     level: permissionLevels.COMPANY,
     containOrEqual: 'contain',
   });
+
+  // TODO: Create `allow*` variables for invoices, shopping lists, and quotes
 
   return (
     <>
@@ -72,6 +76,8 @@ export default function Overview({
           </Accordion>
         </Grid>
         )}
+
+        {/* TODO: Conditionally output invoices, shopping lists, and quotes */}
       </Grid>
     </>
   );
