@@ -63,6 +63,12 @@ export default function App() {
   const { quotesCreateActionsPermission, shoppingListCreateActionsPermission } =
     useAppSelector(rolePermissionSelector);
 
+  // TODO: Get the `b2bToken` and `companyId` values from the Redux store
+  //  - Use `useAppSelector` with callback functions to access the `company` value from the store
+
+  // TODO: Get the `crmToken` value from the Redux store
+  //  - This use of `useAppSelector` can directly use the `selectCrmToken` selector from the `crm` slice
+
   const authorizedPages = useMemo(() => {
     return isB2BUser ? b2bJumpPath(role) : PATH_ROUTES.ORDERS;
   }, [role, isB2BUser]);
@@ -339,6 +345,12 @@ export default function App() {
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
   useEffect(() => {
+    // TODO: Initialize the CRM token
+    //  - Effect should depend on the values of `b2bToken`, `companyId`
+    //  - Effect should do nothing if `crmToken` is already set
+    //  - If `b2bToken` and `companyId` exist, call `initCrm` with the values to get the CRM token
+    //  - Dispatch the `setCrmToken` action with the token value
+    
     // TRY: View session storage in your browser tools to see the "persist:crm" value
     storeDispatch(setCrmToken('test token'));
   }, [storeDispatch]);
