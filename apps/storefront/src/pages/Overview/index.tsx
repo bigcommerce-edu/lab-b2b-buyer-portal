@@ -20,6 +20,10 @@ import { useB3Lang } from "@/lib/lang";
 export default function Overview() {
   const b3Lang = useB3Lang();
 
+  // TODO: Get the user's permissions from the Redux store
+  //  - Use `useAppSelector` with the `rolePermissionSelector` selector
+  //  - Destructure `getOrderPermission` from the result
+
   return (
     <>
       <Grid
@@ -34,6 +38,7 @@ export default function Overview() {
           <h3>Logged-in User Information Placeholder</h3>
         </Grid>
 
+        {/* TODO: Make the rendering of recent orders conditional on `getOrderPermission` */}
         <Grid
           item
           key="recent-orders"
