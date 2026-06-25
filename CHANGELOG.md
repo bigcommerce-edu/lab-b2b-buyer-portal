@@ -2,6 +2,12 @@
 
 All notable changes to this lab project are documented here. The version below is the **project version** (plain semver), tagged on the tip of the corresponding progressive history — it is independent of the base B2B Buyer Portal framework version.
 
+## 1.0.1
+
+Restructures commit history to put all TODO comments immediately before the code that resolves them.
+
+Base framework: `bigcommerce/b2b-buyer-portal@20260520032936`.
+
 ## 1.0.0
 
 Adopt the progressive-history structure.
