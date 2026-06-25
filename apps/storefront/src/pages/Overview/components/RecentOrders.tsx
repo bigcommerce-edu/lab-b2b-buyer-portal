@@ -22,6 +22,9 @@ interface OrdersProps {
   startLoad: boolean;
 }
 
+// TODO Create an interface called `OverviewOrderWithSupportCaseStatus` that extends `OverviewOrder` 
+// and adds an optional `supportCaseStatus` field
+
 export default function RecentOrders({
   startLoad,
 }: OrdersProps) {
@@ -31,6 +34,7 @@ export default function RecentOrders({
   const navigate = useNavigate();
 
   const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
+  // TODO: Change the type of `orders` to `OverviewOrderWithSupportCaseStatus` to account for added CRM field
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -56,9 +60,16 @@ export default function RecentOrders({
     }).then((crmCases) => {
       // TODO: Remove this console.log after implementing the main logic
       console.log(crmCases);
+
+      // TODO: Add `supportCaseStatus` field to each order record and update the main `orders` state value
+      //  - Use `map` to loop through all `b2bOrders`
+      //  - Find the record in `crmCases` with a `b2bOrderId` matching the current order's `orderId`
+      //  - Return a new object with the original order data and the CRM case status
+      //  - Set the new value to the `orders` state
     });
   }, [crmToken, b2bOrders]);
 
+  // TODO: Update type info for `item` to `OverviewOrderWithSupportCaseStatus`
   const orderColumns = [
     {
       key: 'orderId',
@@ -82,6 +93,8 @@ export default function RecentOrders({
         return `${displayFormat(Number(item.createdAt))}`;
       },
     },
+    // TODO: Add a new column for `supportCaseStatus`
+    //  - The custom `render` function should render a `CircularProgress` component until `supportCaseStatus` has a value
   ];
 
   return (
