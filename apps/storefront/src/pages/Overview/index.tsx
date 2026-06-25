@@ -46,6 +46,7 @@ export default function Overview() {
           key="recent-orders"
           xs={12}
         >
+          {/* TODO: Replace the placeholder with `RecentOrders` */}
           <h3>Recent Orders Placeholder</h3>
           <Button onClick={() => navigate(HeadlessRoutes.COMPANY_ORDERS)}>{b3Lang('overview.allOrders')}</Button>
         </Grid>

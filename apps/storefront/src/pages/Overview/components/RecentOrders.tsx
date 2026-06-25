@@ -34,16 +34,30 @@ const mockOrders = [
 ];
 
 interface OrdersProps {
-  
 }
 
 export default function RecentOrders({
-  
 }: OrdersProps) {
   const b3Lang = useB3Lang();
   const navigate = useNavigate();
   
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
+  // TODO: Use `useEffect` to fetch/set order data when component first mounts
+  //  - Initially, use `mockOrders` to set the value of `orders`
+
+  // TODO: Create an `orderColumns` array to define the columns for the table
+  //  - Include a unique key (matching the GraphQL response field) and a title for each column
+  //  - Include columns for `orderId`, `poNumber`, `totalIncTax`, and `createdAt`
+  //  - `totalIncTax` needs a custom `render` function to use currency formatting for the value
+  //  - `createdAt` needs a custom `render` function to use date formatting for the value
+
+  // TODO: Implement the JSX
+  //  - Use `B3Spin` as a wrapper to eventually control loading feedback
+  //  - Use `OverviewCard` with a `CardContent`
+  //  - Render a `B3Table`
+  //    - Use the `orders` state as the value of `listItems`
+  //    - Use `orderColumns` as the value of `columnItems`
+  //    - The `onClickRow` behavior should use `navigate` to go to the route /orderDetail/{item.orderId}
   throw new Error('RecentOrders not implemented');
 }
