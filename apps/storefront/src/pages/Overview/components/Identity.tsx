@@ -24,5 +24,13 @@ export default function Identity() {
 
   const b3Lang = useB3Lang();
 
+  // TODO: Implement the JSX
+  //  - Wrap the entire contents in a `Box`, using `sx` for basic `overflowX` and `paddingX` styles
+  //  - Output a `Grid` container with 3 `Grid` items
+  //    - Use the `xs` and `lg` properties on `Grid` items to control the layout for different screen sizes
+  //  - In each `Grid` item, render a `Card` with a `CardHeader` and `CardContent`
+  //  - Item 1 should display the user's first and last name
+  //  - Item 2 should display the company name
+  //  - Item 3 should display the user role name
   throw new Error('Identity component not implemented');
 }

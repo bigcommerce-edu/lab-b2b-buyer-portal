@@ -41,6 +41,7 @@ export default function Overview({
           key="overview"
           xs={12}
         >
+          {/* TODO: Replace the placeholder with `Identity` */}
           <h3>Logged-in User Information Placeholder</h3>
         </Grid>
 
