@@ -378,6 +378,8 @@ export default function App() {
     setCustomStyle(newStyle);
   }, [cssOverride?.css, CUSTOM_STYLES]);
 
+  // TODO: Use a side effect to test setting the CRM token in global state
+
   return (
     <>
       <HashRouter>

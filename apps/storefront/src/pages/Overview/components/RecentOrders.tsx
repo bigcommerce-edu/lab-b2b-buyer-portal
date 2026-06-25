@@ -27,6 +27,8 @@ export default function RecentOrders({
   startLoad,
   setOpenPage,
 }: OrdersProps) {
+  // TODO: Get the token needed for CRM API calls with `useCrmToken`
+  
   const b3Lang = useB3Lang();
   
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
@@ -41,6 +43,8 @@ export default function RecentOrders({
       setLoading(false);
     });
   }, [startLoad, loading]);
+
+  // TODO: Use `useEffect` to inspect the value of the CRM token
 
   const orderColumns = [
     {
