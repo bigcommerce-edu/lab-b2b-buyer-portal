@@ -16,6 +16,9 @@ import { styled } from '@mui/material/styles';
 
 import { useB3Lang } from "@/lib/lang";
 
+// TODO: Use `styled` to create a reusable `IdentityCard` component based on `Card`
+//  - Define a background color, padding, border radius, and text alignment
+
 export default function Identity() {
   const company = useAppSelector(({ company }) => company);
   const { companyInfo, customer } = company;
@@ -48,25 +51,40 @@ export default function Identity() {
         spacing={3}
       >
         <Grid item xs={12} lg={4}>
+          {/* TODO: Use the custom `IdentityCard` for reusable styling */}
           <Card>
             <CardHeader title={b3Lang('identity.user')} />
             <CardContent>
+              {/* TODO: Flesh out the content of the card 
+                  - Include `PersonIcon`
+                  - Wrap text in `Typography`
+              */}
               {firstName} {lastName}
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} lg={4}>
+          {/* TODO: Use the custom `IdentityCard` for reusable styling */}
           <Card>
             <CardHeader title={b3Lang('identity.company')} />
             <CardContent>
+              {/* TODO: Flesh out the content of the card 
+                  - Include `BusinessIcon`
+                  - Wrap text in `Typography`
+              */}
               {companyName}
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} lg={4}>
+          {/* TODO: Use the custom `IdentityCard` for reusable styling */}
           <Card>
             <CardHeader title={b3Lang('identity.role')} />
             <CardContent>
+              {/* TODO: Flesh out the content of the card 
+                  - Include `SecurityIcon`
+                  - Wrap text in `Typography`
+              */}
               {companyRoleName}
             </CardContent>
           </Card>
