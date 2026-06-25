@@ -22,7 +22,12 @@ export default function Overview() {
 
   const [ordersOpen, setOrdersOpen] = useState<boolean>(false);
 
+  // TODO: Create `*Open` state values for invoices, shopping lists, and quotes
+
   const { getOrderPermission } = useAppSelector(rolePermissionSelector);
+
+  // TODO: Destructure `getInvoicesPermission`, `getShoppingListPermission`,
+  //       and `getQuotesPermission` from the same `rolePermissionSelector` result
 
   return (
     <>
@@ -61,6 +66,8 @@ export default function Overview() {
           </Accordion>
         </Grid>
         )}
+
+        {/* TODO: Conditionally output invoices, shopping lists, and quotes */}
       </Grid>
     </>
   );
