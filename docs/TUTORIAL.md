@@ -1,8 +1,6 @@
 # B2B Buyer Portal Lab Tutorial
 
-> Based on version `1.0.0`
-
-This tutorial walks through customizing the BigCommerce B2B Buyer Portal step by step. Each lab step corresponds to a pair of commits in the progressive history — a `*-pre` commit (with `TODO:` placeholders) immediately followed by a `*-post` commit (the implementation) — surfaced here as GitHub compare links.
+> Based on version `1.0.1`
 
 ## Getting Started
 
