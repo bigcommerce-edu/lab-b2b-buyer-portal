@@ -22,6 +22,8 @@ export default function Overview() {
 
   const { getOrderPermission } = useAppSelector(rolePermissionSelector);
 
+  // TODO: Create a boolean `ordersOpen` state value to track the open state of the orders accordion
+
   return (
     <>
       <Grid
@@ -43,7 +45,15 @@ export default function Overview() {
           key="recent-orders"
           xs={12}
         >
+          {/* TODO: Wrap `RecentOrders` in an `Accordion`
+                - An `Accordion` has an `AccordionSummary` and an `AccordionDetails` as children
+                - An `onChange` on the `Accordion` should set the `ordersOpen` state value based on the value of `isExpanded`
+                - Use the `ExpandMoreIcon` for the `expandIcon` on `AccordionSummary`
+                - The existing `RecentOrders` component should be rendered in `AccordionDetails`
+          */}
           <RecentOrders
+            // TODO: Pass the `ordersOpen` state value to `startLoad`, 
+            // to trigger order fetching when the accordion is opened
           />
         </Grid>
         )}

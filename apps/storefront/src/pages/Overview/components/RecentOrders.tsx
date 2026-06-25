@@ -34,9 +34,11 @@ const mockOrders = [
 ];
 
 interface OrdersProps {
+  // TODO: Add the `startLoad` prop, which is a boolean
 }
 
 export default function RecentOrders({
+  // TODO: Add the `startLoad` prop to allow the parent component to control when data is loaded
 }: OrdersProps) {
   const b3Lang = useB3Lang();
   const navigate = useNavigate();
@@ -44,8 +46,10 @@ export default function RecentOrders({
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
 
   useEffect(() => {
+    // TODO: Return without doing anything if `startLoad` is false, meaning the parent component hasn't triggered the loading
+
     setOrders(mockOrders);
-  }, []);
+  }, []); // TODO Update the effect dependencies to include `startLoad`
 
   const orderColumns = [
     {
