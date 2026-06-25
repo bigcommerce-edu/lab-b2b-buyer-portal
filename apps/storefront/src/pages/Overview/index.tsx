@@ -24,6 +24,11 @@ export default function Overview({
 }: OverviewProps) {
   const b3Lang = useB3Lang();
 
+  // TODO: Set `allowOrders` based on the result of `validatePermissionWithComparisonType`
+  //  - Pass a `code` to check against: the `ordersPermissionCodes` value from `newPermissions`
+  //  - Pass a `level` to check (user-level or company-level): The `COMPANY` constant from `permissionLevels`
+  //  - Pass a `containOrEqual` value of "contain"
+
   return (
     <>
       <Grid
@@ -38,6 +43,7 @@ export default function Overview({
           <h3>Logged-in User Information Placeholder</h3>
         </Grid>
 
+        {/* TODO: Make the rendering of recent orders conditional on `allowOrders` */}
         <Grid
           item
           key="recent-orders"
