@@ -52,6 +52,9 @@ export default function Overview({
           xs={12}
         >
           <h3>Recent Orders Placeholder</h3>
+          {/* TODO: Add a button to navigate to the orders page with `setOpenPage` 
+                - `HeadlessRoutes` includes a constant (`COMPANY_ORDERS`) with the main orders page route
+          */}
         </Grid>
         )}
       </Grid>
