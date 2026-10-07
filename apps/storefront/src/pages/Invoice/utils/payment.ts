@@ -1,0 +1,83 @@
+import round from 'lodash-es/round';
+
+import { getInvoiceCheckoutUrl } from '@/shared/service/b2b';
+import { BcCartData, InvoiceListNode } from '@/types/invoice';
+import { attemptCheckoutLoginAndRedirect } from '@/utils/b3checkout';
+import b2bLogger from '@/utils/b3Logger';
+import { isBigCommercePlatform, isCatalystPlatform } from '@/utils/basicConfig';
+import { applyCurrencyToken } from '@/utils/currencyUtils';
+
+const getCheckoutUrlAndCart = async (params: BcCartData) => {
+  const {
+    invoiceCreateBcCart: {
+      result: { checkoutUrl, cartId },
+    },
+  } = await getInvoiceCheckoutUrl(params);
+
+  return {
+    checkoutUrl,
+    cartId,
+  };
+};
+
+export const gotoInvoiceCheckoutUrl = async (
+  params: BcCartData,
+  platform: string,
+  isReplaceCurrentUrl?: boolean,
+) => {
+  const { checkoutUrl, cartId } = await getCheckoutUrlAndCart(params);
+  const handleStencil = () => {
+    if (isReplaceCurrentUrl) {
+      window.location.replace(checkoutUrl);
+    } else {
+      window.location.href = checkoutUrl;
+    }
+  };
+
+  if (isBigCommercePlatform(platform)) {
+    handleStencil();
+    return;
+  }
+
+  if (isCatalystPlatform(platform)) {
+    window.location.assign(`/checkout?cartId=${cartId}`);
+    return;
+  }
+
+  try {
+    await attemptCheckoutLoginAndRedirect(cartId, checkoutUrl, isReplaceCurrentUrl);
+  } catch (e) {
+    b2bLogger.error(e);
+    handleStencil();
+  }
+};
+
+export const formattingNumericValues = (value: number, decimalPlaces: number) =>
+  round(Number(value), decimalPlaces).toFixed(decimalPlaces);
+
+export const formatInvoiceBalanceAmount = (
+  balance: { code?: string; value: string | number },
+  decimalPlaces: number,
+) => {
+  const amount = formattingNumericValues(Number(balance.value), decimalPlaces);
+
+  return applyCurrencyToken(balance.code, amount || '0');
+};
+
+const getInvoiceCurrency = (invoice: InvoiceListNode) => {
+  const {
+    node: { openBalance, originalBalance },
+  } = invoice;
+
+  return openBalance?.code || originalBalance.code;
+};
+
+export const hasMixedInvoiceCurrencies = (invoices: InvoiceListNode[]) => {
+  if (invoices.length === 0) {
+    return false;
+  }
+
+  const referenceCurrency = getInvoiceCurrency(invoices[0]);
+
+  return invoices.some((invoice) => getInvoiceCurrency(invoice) !== referenceCurrency);
+};
