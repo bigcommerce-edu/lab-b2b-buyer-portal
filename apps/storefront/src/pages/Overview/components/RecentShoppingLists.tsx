@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   CardContent,
@@ -8,7 +9,6 @@ import { B3Table } from "@/components/table/B3Table";
 import B3Spin from "@/components/spin/B3Spin";
 import { HeadlessRoutes } from "@/constants";
 import { useB3Lang } from "@/lib/lang";
-import { type SetOpenPage } from '@/pages/SetOpenPage';
 import { ShoppingListStatusTag } from "@/pages/ShoppingLists/ShoppingListStatusTag";
 import { displayFormat } from "@/utils/b3DateFormat";
 
@@ -17,14 +17,13 @@ import OverviewCard from "./OverviewCard";
 
 interface ShoppingListsProps {
   startLoad: boolean;
-  setOpenPage: SetOpenPage;
 }
 
 export default function RecentShoppingLists({
   startLoad,
-  setOpenPage,
 }: ShoppingListsProps) {
   const b3Lang = useB3Lang();
+  const navigate = useNavigate();
 
   const [shoppingLists, setShoppingLists] = useState<OverviewShoppingList[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,10 +76,10 @@ export default function RecentShoppingLists({
               listItems={shoppingLists}
               showPagination={false}
               onClickRow={(item) => {
-                setOpenPage({ isOpen: true, openUrl: `/shoppingList/${item.id}` });
+                navigate(`/shoppingList/${item.id}`);
               }}
               />
-            <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.SHOPPING_LISTS })}>{b3Lang('overview.allShoppingLists')}</Button>
+            <Button onClick={() => navigate(HeadlessRoutes.SHOPPING_LISTS)}>{b3Lang('overview.allShoppingLists')}</Button>
           </CardContent>
         </OverviewCard>
       </B3Spin>

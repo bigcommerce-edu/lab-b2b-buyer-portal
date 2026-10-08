@@ -5,11 +5,20 @@ import BackorderMessage from '@/components/BackorderMessage';
 import { PRODUCT_DEFAULT_IMAGE } from '@/constants';
 import { useMobile } from '@/hooks/useMobile';
 import { useB3Lang } from '@/lib/lang';
-import type { CatalogQuickVariantSku } from '@/shared/service/b2b/graphql/product';
+import type { CatalogQuickVariantSku, ProductSearch } from '@/shared/service/b2b/graphql/product';
 import { currencyFormat } from '@/utils/b3CurrencyFormat';
 import { snackbar } from '@/utils/b3Tip';
+import type { BackorderDisplayFields } from '@/utils/backorderDisplayFromInventory';
+import {
+  getCatalogBackorderFieldsForPicklistProduct,
+  getCatalogProductRowDisplayState,
+  type PicklistSelection,
+} from '@/utils/catalogBackorderDisplay';
+import { getProductListColumnAlignments } from '@/utils/getProductListColumnAlignments';
 
 import { EditableProductItem, OrderProductOption } from '../../../types';
+import { formatCurrency } from '../shared/convertOrderDetail';
+import { getOrderPicklistSelections } from '../shared/getOrderPicklistSelections';
 import {
   defaultItemStyle,
   Flex,
@@ -19,7 +28,6 @@ import {
   ProductImage,
   ProductOptionText,
 } from '../styled';
-import { getReorderProductRowDisplayState } from '../utils/reorderBackorderDisplay';
 
 interface ReturnListProps {
   returnId: number;
@@ -32,11 +40,33 @@ interface OrderCheckboxProductProps {
   checkedArr?: number[];
   setCheckedArr?: (items: number[]) => void;
   setReturnArr?: (items: ReturnListProps[]) => void;
-  textAlign?: string;
   type?: string;
-  reorderInventoryBySku?: Record<string, CatalogQuickVariantSku>;
-  reorderBackorderUiEnabled?: boolean;
+  catalogInventoryBySku?: Record<string, CatalogQuickVariantSku>;
+  backorderUiEnabled?: boolean;
+  showReorderAtsHelper?: boolean;
+  /** Order currency code — uses Intl.NumberFormat when provided. */
+  currencyCode?: string;
+  picklistProductsById?: Record<number, ProductSearch>;
 }
+
+interface PicklistBackorderRow {
+  selection: PicklistSelection;
+  backorderFields: BackorderDisplayFields;
+}
+
+const getPicklistBackorderRows = (
+  selections: PicklistSelection[],
+  qty: number,
+  picklistProductsById: Record<number, ProductSearch>,
+): PicklistBackorderRow[] =>
+  selections.flatMap((selection) => {
+    const backorderFields = getCatalogBackorderFieldsForPicklistProduct(
+      qty,
+      picklistProductsById[selection.productId],
+    );
+
+    return backorderFields ? [{ selection, backorderFields }] : [];
+  });
 
 export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
   const {
@@ -46,17 +76,24 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
     checkedArr = [],
     setCheckedArr = () => {},
     setReturnArr = () => {},
-    textAlign = 'left',
     type,
-    reorderInventoryBySku,
-    reorderBackorderUiEnabled = false,
+    catalogInventoryBySku,
+    backorderUiEnabled = false,
+    showReorderAtsHelper = false,
+    currencyCode,
+    picklistProductsById = {},
   } = props;
 
   const b3Lang = useB3Lang();
 
+  const formatPrice = (value: string | number) =>
+    currencyCode ? formatCurrency(Number(value), currencyCode) : currencyFormat(value);
+
   const [isMobile] = useMobile();
 
   const [returnList, setReturnList] = useState<ReturnListProps[]>([]);
+
+  const usesCatalogBackorderInventory = type === 'reOrder' || type === 'shoppingList';
 
   const getProductTotals = (quantity: string | number, price: string | number) => {
     const priceNumber = parseFloat(price.toString()) || 0;
@@ -66,18 +103,17 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
   };
 
   const itemStyle = isMobile ? mobileItemStyle : defaultItemStyle;
-  const qtyStackAlignItems = textAlign === 'right' ? 'flex-end' : 'flex-start';
+  const { qtyTextAlign, numericTextAlign, qtyStackItemsAlignment } =
+    getProductListColumnAlignments(isMobile);
   const desktopQtyColumnStyle =
-    reorderBackorderUiEnabled && !isMobile
-      ? { width: '22%', minWidth: 'max-content' }
-      : itemStyle.default;
+    backorderUiEnabled && !isMobile ? { width: '22%', minWidth: '10rem' } : itemStyle.default;
 
   const handleSelectAllChange = () => {
     if (checkedArr.length === products.length) {
       setCheckedArr([]);
       setReturnList([]);
     } else {
-      const variantIds = products.map((item) => item.variant_id);
+      const productIds = products.map((item) => item.id);
       const returnIds: ReturnListProps[] = [];
       products.forEach((item, index) => {
         returnIds[index] = {
@@ -86,21 +122,21 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
         };
       });
 
-      setCheckedArr(variantIds);
+      setCheckedArr(productIds);
       setReturnList(returnIds);
     }
   };
 
-  const handleSelectChange = (variantId: number, returnId: number, returnQty: number) => {
+  const handleSelectChange = (productId: number, returnId: number, returnQty: number) => {
     const newList = [...checkedArr];
     const newReturnList = [...returnList];
-    const index = newList.findIndex((item) => item === variantId);
+    const index = newList.findIndex((item) => item === productId);
     const returnIndex = newReturnList.findIndex((item) => item.returnId === returnId);
     if (index !== -1) {
       newList.splice(index, 1);
       newReturnList.splice(returnIndex, 1);
     } else {
-      newList.push(variantId);
+      newList.push(productId);
       newReturnList.push({
         returnId,
         returnQty,
@@ -110,7 +146,7 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
     setReturnList(newReturnList);
   };
 
-  const isChecked = (variantId: number) => checkedArr.includes(variantId);
+  const isChecked = (productId: number) => checkedArr.includes(productId);
 
   const handleProductQuantityChange =
     (product: EditableProductItem) => (e: ChangeEvent<HTMLInputElement>) => {
@@ -172,13 +208,21 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
           <FlexItem>
             <ProductHead>{b3Lang('orderDetail.reorder.product')}</ProductHead>
           </FlexItem>
-          <FlexItem textAlignLocation={textAlign} {...itemStyle.default}>
+          <FlexItem
+            textAlignLocation={numericTextAlign}
+            {...itemStyle.default}
+            padding={isMobile ? undefined : '0 1rem 0 0'}
+          >
             <ProductHead>{b3Lang('orderDetail.reorder.price')}</ProductHead>
           </FlexItem>
-          <FlexItem textAlignLocation={textAlign} {...desktopQtyColumnStyle}>
+          <FlexItem
+            textAlignLocation={qtyTextAlign}
+            {...desktopQtyColumnStyle}
+            padding={isMobile ? undefined : '0 0 0 1rem'}
+          >
             <ProductHead>{b3Lang('orderDetail.reorder.qty')}</ProductHead>
           </FlexItem>
-          <FlexItem textAlignLocation={textAlign} {...itemStyle.default}>
+          <FlexItem textAlignLocation={numericTextAlign} {...itemStyle.default}>
             <ProductHead>{b3Lang('orderDetail.reorder.total')}</ProductHead>
           </FlexItem>
         </Flex>
@@ -201,15 +245,22 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
 
       {products.map((product: EditableProductItem) => {
         const qty = Number(getProductQuantity(product)) || 0;
-        const { qtyHelperText, backorderFields } = getReorderProductRowDisplayState({
+        const { qtyHelperText, backorderFields } = getCatalogProductRowDisplayState({
           qty,
           productHelperText: product.helperText,
-          isReorder: type === 'reOrder',
-          inventoryRow:
-            type === 'reOrder' ? reorderInventoryBySku?.[product.sku.toUpperCase()] : undefined,
-          backorderUiEnabled: reorderBackorderUiEnabled,
+          showAvailableToSellHelper: showReorderAtsHelper,
+          inventoryRow: usesCatalogBackorderInventory
+            ? catalogInventoryBySku?.[product.sku.toUpperCase()]
+            : undefined,
+          backorderUiEnabled,
           formatOnlyAvailable: (count) => b3Lang('orderDetail.reorder.onlyAvailable', { count }),
         });
+        const picklistSelections = usesCatalogBackorderInventory
+          ? getOrderPicklistSelections(product, catalogInventoryBySku ?? {})
+          : [];
+        const picklistBackorderRows = backorderUiEnabled
+          ? getPicklistBackorderRows(picklistSelections, qty, picklistProductsById)
+          : [];
 
         return (
           <Flex
@@ -219,9 +270,9 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
             aria-labelledby={`group-label-${product.id}`}
           >
             <Checkbox
-              checked={isChecked(product.variant_id)}
+              checked={isChecked(product.id)}
               onChange={() =>
-                handleSelectChange(product.variant_id, product.id, Number(product.editQuantity))
+                handleSelectChange(product.id, product.id, Number(product.editQuantity))
               }
             />
             <FlexItem>
@@ -244,20 +295,24 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
                 ))}
               </Box>
             </FlexItem>
-            <FlexItem textAlignLocation={textAlign} padding="10px 0 0" {...itemStyle.default}>
+            <FlexItem
+              textAlignLocation={numericTextAlign}
+              padding={isMobile ? '0.625rem 0 0' : '0.625rem 1rem 0 0'}
+              {...itemStyle.default}
+            >
               {isMobile && <span>{b3Lang('orderDetail.reorder.price')} </span>}
-              {currencyFormat(product.base_price)}
+              {product.formattedPrice || formatPrice(product.base_price)}
             </FlexItem>
             <FlexItem
-              textAlignLocation={textAlign}
-              padding={isMobile ? undefined : '10px 0 0'}
+              textAlignLocation={qtyTextAlign}
+              padding={isMobile ? undefined : '0.625rem 0 0 1rem'}
               {...desktopQtyColumnStyle}
             >
               <Box
                 sx={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: qtyStackAlignItems,
+                  alignItems: qtyStackItemsAlignment,
                   width: '100%',
                   maxWidth: '100%',
                   minWidth: 0,
@@ -274,7 +329,7 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
                   onBlur={handleNumberInputBlur(product)}
                   size="small"
                   sx={{
-                    width: isMobile ? '60%' : '80px',
+                    width: isMobile ? '60%' : '100%',
                     '& .MuiFormHelperText-root': {
                       marginLeft: '0',
                       marginRight: '0',
@@ -290,8 +345,8 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
                       width: '100%',
                       maxWidth: '100%',
                       minWidth: 0,
-                      textAlign: 'right',
-                      alignSelf: 'flex-end',
+                      textAlign: qtyTextAlign,
+                      alignSelf: qtyStackItemsAlignment,
                     }}
                   >
                     <BackorderMessage
@@ -302,11 +357,38 @@ export default function OrderCheckboxProduct(props: OrderCheckboxProductProps) {
                     />
                   </Box>
                 )}
+                {picklistBackorderRows.map(({ selection, backorderFields: selectionFields }) => (
+                  <Box
+                    key={`${selection.modifierId}-${selection.productId}`}
+                    sx={{
+                      mt: 1,
+                      width: '100%',
+                      maxWidth: '100%',
+                      minWidth: 0,
+                      textAlign: qtyTextAlign,
+                      alignSelf: qtyStackItemsAlignment,
+                    }}
+                  >
+                    <Typography sx={{ color: '#616161', typography: 'body2', fontWeight: 600 }}>
+                      {`${selection.displayName}:`}
+                    </Typography>
+                    <BackorderMessage
+                      totalOnHand={selectionFields.totalOnHand}
+                      quantityBackordered={selectionFields.quantityBackordered}
+                      backorderMessage={selectionFields.backorderMessage}
+                      visible
+                    />
+                  </Box>
+                ))}
               </Box>
             </FlexItem>
-            <FlexItem textAlignLocation={textAlign} padding="10px 0 0" {...itemStyle.default}>
+            <FlexItem
+              textAlignLocation={numericTextAlign}
+              padding="0.625rem 0 0"
+              {...itemStyle.default}
+            >
               {isMobile && <span>{b3Lang('orderDetail.reorder.total')} </span>}
-              {currencyFormat(getProductTotals(getProductQuantity(product), product.base_price))}
+              {formatPrice(getProductTotals(getProductQuantity(product), product.base_price))}
             </FlexItem>
           </Flex>
         );

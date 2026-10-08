@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Delete, Edit, Warning as WarningIcon } from '@mui/icons-material';
 import { Box, FormControlLabel, styled, Switch, TextField, Typography } from '@mui/material';
 import ceil from 'lodash-es/ceil';
 
 import BackorderMessage from '@/components/BackorderMessage';
+import PicklistBackorderMessages from '@/components/PicklistBackorderMessages';
 import { TableColumnItem } from '@/components/table/B3Table';
 import PaginationTable from '@/components/table/PaginationTable';
 import { PRODUCT_DEFAULT_IMAGE } from '@/constants';
@@ -24,12 +25,12 @@ import { getProductOptionsFields } from '@/utils/b3Product/shared/config';
 import { snackbar } from '@/utils/b3Tip';
 
 import ChooseOptionsDialog from '../../ShoppingListDetails/components/ChooseOptionsDialog';
+import { useDraftQuoteBackorderState } from '../hooks/useDraftQuoteBackorderState';
 import {
-  draftQuoteListHasBackorderedItemsForDisplay,
-  draftRowQuantityExceedsAvailableToSell,
   getDraftBackorderDisplayFields,
   getQuoteItemBackendAvailability,
-} from '../utils/getDraftBackorderDisplayFields';
+  resolveDraftLineProductId,
+} from '../utils/getQuoteBackorderDisplayFields';
 
 import QuoteTableCard from './QuoteTableCard';
 
@@ -43,11 +44,8 @@ const StyledQuoteTableContainer = styled('div')(() => ({
       '& td': {
         verticalAlign: 'top',
       },
-      '& td: first-of-type': {
-        verticalAlign: 'inherit',
-      },
     },
-    '& tr: hover': {
+    '& tr:hover': {
       '& #shoppingList-actionList': {
         opacity: 1,
       },
@@ -164,26 +162,19 @@ interface QuoteTableProps {
 function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
   const b3Lang = useB3Lang();
   const dispatch = useAppDispatch();
-  const {
-    isBackorderEnabled,
-    isBackorderMessagingEnabled,
-    isBackorderMessagingContextEnabled,
-    hasAnyBackorderDisplay,
-  } = useBackorderStorefrontMessaging();
+  const { isBackorderEnabled, hasAnyBackorderDisplay } = useBackorderStorefrontMessaging();
 
-  const [showBackorderDetails, setShowBackorderDetails] = useState(false);
+  const [showBackorderDetails, setShowBackorderDetails] = useState(true);
 
-  const draftQuoteBackorderContextEnabled =
-    isBackorderMessagingContextEnabled && hasAnyBackorderDisplay;
+  const draftQuoteBackorderContextEnabled = isBackorderEnabled && hasAnyBackorderDisplay;
 
   const showBackorderMessageBase = draftQuoteBackorderContextEnabled && showBackorderDetails;
 
-  const hasBackorderedItems = useMemo(() => {
-    if (!isBackorderMessagingEnabled) {
-      return false;
-    }
-    return draftQuoteListHasBackorderedItemsForDisplay(items);
-  }, [items, isBackorderMessagingEnabled]);
+  const { hasBackorderedItems, inventoryById, selectionsByRowId } = useDraftQuoteBackorderState({
+    items,
+    isBackorderEnabled,
+    draftQuoteBackorderContextEnabled,
+  });
 
   const showBackorderToggle = draftQuoteBackorderContextEnabled && hasBackorderedItems;
 
@@ -429,10 +420,12 @@ function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
       key: 'Qty',
       title: b3Lang('quoteDraft.quoteTable.qty'),
       render: (row) => {
-        const backorderFields = getDraftBackorderDisplayFields(row);
-        const hideBackorderForStockError = draftRowQuantityExceedsAvailableToSell(row);
-        const shouldShowBackorder =
-          showBackorderMessageBase && Boolean(backorderFields) && !hideBackorderForStockError;
+        const backorderFields = getDraftBackorderDisplayFields(
+          row,
+          inventoryById[resolveDraftLineProductId(row)],
+        );
+        const shouldShowBackorder = showBackorderMessageBase && Boolean(backorderFields);
+        const picklistSelections = selectionsByRowId[String(row.id)] ?? [];
         return (
           <>
             <TextField
@@ -451,10 +444,10 @@ function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
                 handleCheckProductQty(row, Number(e.target.value));
               }}
               sx={{
-                width: '75%',
+                width: '100%',
                 '& input': {
-                  paddingTop: '12px',
-                  paddingRight: '6px',
+                  paddingTop: '0.75rem',
+                  paddingRight: '0.375rem',
                 },
               }}
             />
@@ -468,12 +461,21 @@ function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
                 />
               </Box>
             )}
+            {picklistSelections.length > 0 && (
+              <PicklistBackorderMessages
+                selections={picklistSelections}
+                picklistProductsById={inventoryById}
+                qty={Number(row.quantity) || 0}
+                visible={showBackorderDetails}
+                backorderUiEnabled={draftQuoteBackorderContextEnabled}
+              />
+            )}
           </>
         );
       },
       width: '15%',
       style: {
-        textAlign: 'right',
+        textAlign: 'left',
       },
     },
     {
@@ -596,6 +598,8 @@ function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
             handleUpdateProductQty={handleUpdateProductQty}
             draftQuoteBackorderContextEnabled={draftQuoteBackorderContextEnabled}
             showBackorderDetails={showBackorderDetails}
+            picklistProductsById={inventoryById}
+            picklistSelections={selectionsByRowId[String(row.id)] ?? []}
           />
         )}
       />
@@ -610,6 +614,7 @@ function QuoteTable({ total, items, updateSummary }: QuoteTableProps) {
           handleChooseOptionsDialogConfirm as unknown as (products: CustomFieldItems[]) => void
         }
         isEdit
+        type="quote"
       />
     </StyledQuoteTableContainer>
   );

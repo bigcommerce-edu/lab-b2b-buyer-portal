@@ -64,7 +64,7 @@ Each step is a `<tag>-pre` (TODO placeholders) commit immediately followed by a 
 | 1b | `route-01b` | Add router configuration for Overview route |
 | 2 | `route-02` | Change Buyer Portal default page to Overview |
 | 3 | `route-03` | Restrict rendering of recent orders info by permissions |
-| 4 | `route-04` | Utilize setOpenPage to navigate around Buyer Portal |
+| 4 | `route-04` | Utilize useNavigate to navigate around Buyer Portal |
 
 **Lab 2 — Component Architecture (`comp`)** — start: `comp-pre`, complete: `comp-post`
 

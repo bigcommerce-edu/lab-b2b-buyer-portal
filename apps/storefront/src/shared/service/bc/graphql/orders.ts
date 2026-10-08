@@ -7,11 +7,8 @@
  * @see https://docs.bigcommerce.com/developer/api-reference/graphql/storefront/queries/node#fields.body.Order
  */
 
-import { platform } from '@/utils/basicConfig';
-
-import B3Request from '../../request/b3Fetch';
-
 import type { CollectionInfo, DateTimeExtended, Money, PageInfo } from './base';
+import { storefrontGQLRequest } from './client';
 
 export type { CollectionInfo, DateTimeExtended, Money, PageInfo } from './base';
 
@@ -43,21 +40,36 @@ export interface OrderAddress {
 export interface OrderLineItemProductOption {
   name: string;
   value: string;
+  /** Option ID — maps to product_attribute_id. */
+  productAttributeEntityId?: number;
+  /** Option value ID — maps to validated_value. */
+  productAttributeValueEntityId?: number;
 }
 
-/** Projects OrderPhysicalLineItem; OrderDigitalLineItem has a similar shape. */
+/** Projects OrderPhysicalLineItem. */
 export interface OrderLineItem {
   entityId: number;
+  productEntityId: number;
+  variantEntityId: number | null;
+  sku: string;
   brand: string | null;
   name: string;
   quantity: number;
   productOptions: OrderLineItemProductOption[];
   subTotalListPrice: Money;
+  subTotalSalePrice: Money;
+  image: { url: string } | null;
+  baseCatalogProduct: { path: string } | null;
 }
 
 export interface OrderShipmentTracking {
   number?: string;
   url?: string;
+}
+
+export interface OrderShipmentLineItem {
+  lineItemId: number;
+  quantity: number;
 }
 
 export interface OrderShipment {
@@ -66,6 +78,7 @@ export interface OrderShipment {
   shippingMethodName: string;
   shippingProviderName: string;
   tracking: OrderShipmentTracking | null;
+  items: OrderShipmentLineItem[];
 }
 
 /** Projects OrderShippingConsignment. */
@@ -77,8 +90,27 @@ export interface ShippingConsignment {
   shipments: { edges: Array<{ node: OrderShipment }> };
 }
 
+/** Projects OrderDigitalLineItem within download consignments. */
+export interface OrderDigitalLineItem {
+  entityId: number;
+  productEntityId: number;
+  name: string;
+  quantity: number;
+  productOptions: OrderLineItemProductOption[];
+  subTotalListPrice: Money;
+  subTotalSalePrice: Money;
+}
+
+/** Projects OrderDownloadConsignment — a plain list element, not a connection node. */
+export interface DownloadConsignment {
+  recipientEmail: string;
+  lineItems: { edges: Array<{ node: OrderDigitalLineItem }> };
+}
+
 export interface OrderConsignments {
   shipping: { edges: Array<{ cursor: string; node: ShippingConsignment }> };
+  /** A list in the schema, unlike `shipping`. */
+  downloads: DownloadConsignment[] | null;
 }
 
 /** Nested inside OrderDiscounts.couponDiscounts. */
@@ -125,24 +157,18 @@ export enum OrderHistoryEventType {
 export interface OrderHistoryEvent {
   id: string;
   eventType: OrderHistoryEventType;
-  status: string;
+  /** Title-case status label for the event, e.g. "Awaiting Fulfillment". */
+  statusLabel: string;
   source: string | null;
-  createdBy: OrderPlacedBy | null;
-  details: Record<string, unknown> | null;
   createdAt: string;
-}
-
-export interface OrderQuote {
-  id: string;
 }
 
 export interface OrderInvoice {
   id: string;
 }
 
-export interface ExtraFieldValue {
-  name: string;
-  value: string;
+export interface OrderPaymentInfo {
+  paymentMethodName: string;
 }
 
 // ===========================================================================
@@ -173,14 +199,16 @@ export interface Order {
   totalProductQuantity: number;
   consignments: OrderConsignments | null;
 
+  // Payments (only on OrderWithPayments via site.order detail query)
+  payments?: { edges: Array<{ node: OrderPaymentInfo }> } | null;
+
   // B2B extensions (null for B2C orders)
   reference: string | null;
+  poNumber: string | null;
   company: OrderCompany | null;
   placedBy: OrderPlacedBy | null;
   history: OrderHistoryEvent[];
-  quote: OrderQuote | null;
   invoice: OrderInvoice | null;
-  extraFields: ExtraFieldValue[];
 }
 
 // ===========================================================================
@@ -241,15 +269,16 @@ export interface CompanyOrdersFiltersInput {
 }
 
 /**
- * SF GQL OrdersFiltersInput (base) + B2B extension fields.
- * Base: status, dateRange. Extension: search, companyName, companyIds.
+ * Filters for customer.orders, matching what the server currently accepts.
+ * companyName and companyIds are permanently absent: the agreed schema gist specified
+ * them, but the deployed server never implemented them and the gist is being amended
+ * to match. search is a genuine, temporary omission — it's deferred to its
+ * own ticket and should be restored here once that ticket ships.
  */
 export interface OrdersFiltersInput {
+  /** An OrderStatusValue enum member, e.g. AWAITING_FULFILLMENT — not a display label. */
   status?: string;
   dateRange?: OrderDateRangeFilterInput;
-  search?: string;
-  companyName?: string;
-  companyIds?: string[];
 }
 
 export interface CustomerWithOrdersFiltersInput {
@@ -308,7 +337,8 @@ export interface GetCustomersWithOrdersResponse {
 // ===========================================================================
 
 const moneyFields = `currencyCode
-  value`;
+  value
+  formattedV2`;
 
 const orderStatusFields = `status {
     value
@@ -329,15 +359,29 @@ const orderAddressFields = `firstName
     email`;
 
 const orderLineItemFields = `entityId
+      productEntityId
+      variantEntityId
+      sku
       brand
       name
       quantity
       productOptions {
         name
         value
+        productAttributeEntityId
+        productAttributeValueEntityId
       }
       subTotalListPrice {
         ${moneyFields}
+      }
+      subTotalSalePrice {
+        ${moneyFields}
+      }
+      image {
+        url(width: 80)
+      }
+      baseCatalogProduct {
+        path
       }`;
 
 const orderShipmentFields = `entityId
@@ -357,6 +401,10 @@ const orderShipmentFields = `entityId
         ... on OrderShipmentUrlOnlyTracking {
           url
         }
+      }
+      items {
+        lineItemId
+        quantity
       }`;
 
 const orderConsignmentsFields = `consignments {
@@ -383,6 +431,29 @@ const orderConsignmentsFields = `consignments {
               node {
                 ${orderShipmentFields}
               }
+            }
+          }
+        }
+      }
+    }
+    downloads {
+      recipientEmail
+      lineItems {
+        edges {
+          node {
+            entityId
+            productEntityId
+            name
+            quantity
+            productOptions {
+              name
+              value
+            }
+            subTotalListPrice {
+              ${moneyFields}
+            }
+            subTotalSalePrice {
+              ${moneyFields}
             }
           }
         }
@@ -434,6 +505,7 @@ const orderFinancialFields = `subTotal {
   }`;
 
 const orderB2BFields = `reference
+  poNumber
   company {
     entityId
     name
@@ -447,26 +519,12 @@ const orderB2BFields = `reference
   history {
     id
     eventType
-    status
+    statusLabel
     source
-    createdBy {
-      entityId
-      firstName
-      lastName
-      email
-    }
-    details
     createdAt
-  }
-  quote {
-    id
   }
   invoice {
     id
-  }
-  extraFields {
-    name
-    value
   }`;
 
 /** Lightweight fields for order list views. */
@@ -479,6 +537,7 @@ const orderListNodeFields = `entityId
     ${moneyFields}
   }
   reference
+  poNumber
   company {
     entityId
     name
@@ -536,11 +595,18 @@ const GET_COMPANY_ORDERS = `query GetCompanyOrders(
  * My Orders (customer-scoped, B2B + B2C). Entry: customer.orders.
  * B2B fields auto-populate for B2B users, null for B2C.
  *
- * Note: OrdersConnection lacks collectionInfo; add once SF GQL team ships it.
+ * collectionInfo is deliberately not selected. The field exists on OrdersConnection,
+ * but the customer resolver returns totalItems: null (only the company resolver
+ * populates it), and selecting it raises no error — so a null total would look like
+ * working code.
+ *
+ * There is no total to fetch: the upstream storefront orders endpoint returns cursors
+ * and hasNext/hasPrevious with no count. My Orders keeps totalCount: -1, which
+ * order/table/B3Table renders as a range without a total. This is the intended
+ * contract, not a placeholder — do not "fix" it.
  */
 const GET_CUSTOMER_ORDERS = `query GetCustomerOrders(
   $filters: OrdersFiltersInput
-  $sortBy: OrdersSortInput
   $first: Int
   $after: String
   $last: Int
@@ -549,7 +615,6 @@ const GET_CUSTOMER_ORDERS = `query GetCustomerOrders(
   customer {
     orders(
       filters: $filters
-      sortBy: $sortBy
       first: $first
       after: $after
       last: $last
@@ -591,6 +656,13 @@ const GET_ORDER_DETAIL = `query GetOrderDetail($entityId: Int!) {
       totalProductQuantity
       ${orderConsignmentsFields}
       ${orderB2BFields}
+      payments {
+        edges {
+          node {
+            paymentMethodName
+          }
+        }
+      }
     }
   }
 }`;
@@ -632,12 +704,6 @@ const GET_CUSTOMERS_WITH_ORDERS = `query GetCustomersWithOrders(
 // Service functions
 // ===========================================================================
 
-function graphqlRequest<T>(data: { query: string; variables?: object }): Promise<T> {
-  return platform === 'bigcommerce'
-    ? B3Request.graphqlBC<T>(data)
-    : B3Request.graphqlBCProxy<T>(data);
-}
-
 /** Company Orders — all orders from all company members (B2B only). */
 export async function getCompanyOrders(variables: {
   filters?: CompanyOrdersFiltersInput;
@@ -647,7 +713,7 @@ export async function getCompanyOrders(variables: {
   last?: number;
   before?: string;
 }): Promise<GetCompanyOrdersResponse> {
-  return graphqlRequest<GetCompanyOrdersResponse>({
+  return storefrontGQLRequest<GetCompanyOrdersResponse>({
     query: GET_COMPANY_ORDERS,
     variables,
   });
@@ -656,13 +722,12 @@ export async function getCompanyOrders(variables: {
 /** My Orders — customer-scoped, unified for B2B and B2C. */
 export async function getCustomerOrders(variables: {
   filters?: OrdersFiltersInput;
-  sortBy?: OrdersSortInput;
   first?: number;
   after?: string;
   last?: number;
   before?: string;
 }): Promise<GetCustomerOrdersResponse> {
-  return graphqlRequest<GetCustomerOrdersResponse>({
+  return storefrontGQLRequest<GetCustomerOrdersResponse>({
     query: GET_CUSTOMER_ORDERS,
     variables,
   });
@@ -672,10 +737,105 @@ export async function getCustomerOrders(variables: {
 export async function getOrderDetail(variables: {
   entityId: number;
 }): Promise<GetOrderDetailResponse> {
-  return graphqlRequest<GetOrderDetailResponse>({
+  return storefrontGQLRequest<GetOrderDetailResponse>({
     query: GET_ORDER_DETAIL,
     variables,
   });
+}
+
+const GET_ORDER_BACKORDER_HISTORY = `query GetOrderBackorderHistory($entityId: Int!) {
+  site {
+    order(filter: { entityId: $entityId }) {
+      entityId
+      backorderShippingExpectationMessage
+      consignments {
+        shipping {
+          edges {
+            node {
+              lineItems {
+                edges {
+                  node {
+                    entityId
+                    backorderedQuantity
+                    backorderMessage
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+// entityId (orderProductId), not sku: The same SKU can appear on more than one line in an order (split shipments etc.).
+export interface OrderBackorderLineItem {
+  entityId: number;
+  quantityBackordered: number;
+  backorderMessage?: string | null;
+}
+
+export interface OrderBackorderHistory {
+  shippingExpectationMessage?: string | null;
+  lineItems: OrderBackorderLineItem[];
+}
+
+interface GetOrderBackorderHistoryResponse {
+  data?: {
+    site?: {
+      order?: {
+        entityId: number;
+        backorderShippingExpectationMessage?: string | null;
+        consignments?: {
+          shipping?: {
+            edges: Array<{
+              node: {
+                lineItems: {
+                  edges: Array<{
+                    node: {
+                      entityId: number;
+                      backorderedQuantity?: number;
+                      backorderMessage?: string | null;
+                    };
+                  }>;
+                };
+              };
+            }>;
+          };
+        };
+      } | null;
+    };
+  };
+}
+
+export async function getOrderBackorderHistory(variables: {
+  entityId: number;
+}): Promise<OrderBackorderHistory | null> {
+  const response = await storefrontGQLRequest<GetOrderBackorderHistoryResponse>({
+    query: GET_ORDER_BACKORDER_HISTORY,
+    variables,
+  });
+
+  const order = response.data?.site?.order;
+  if (!order) {
+    return null;
+  }
+
+  const shippingEdges = order.consignments?.shipping?.edges ?? [];
+  const lineItems = shippingEdges
+    .flatMap((edge) => edge.node.lineItems.edges.map(({ node }) => node))
+    .filter((node) => (node.backorderedQuantity ?? 0) > 0)
+    .map((node) => ({
+      entityId: node.entityId,
+      quantityBackordered: node.backorderedQuantity ?? 0,
+      backorderMessage: node.backorderMessage,
+    }));
+
+  return {
+    shippingExpectationMessage: order.backorderShippingExpectationMessage,
+    lineItems,
+  };
 }
 
 /** Customers who have placed orders within a company. */
@@ -684,7 +844,7 @@ export async function getCustomersWithOrders(variables: {
   first?: number;
   after?: string;
 }): Promise<GetCustomersWithOrdersResponse> {
-  return graphqlRequest<GetCustomersWithOrdersResponse>({
+  return storefrontGQLRequest<GetCustomersWithOrdersResponse>({
     query: GET_CUSTOMERS_WITH_ORDERS,
     variables,
   });

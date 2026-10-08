@@ -1,6 +1,6 @@
 # B2B Buyer Portal Lab Tutorial
 
-> Based on version `1.0.1`
+> Based on version `1.0.2`
 
 ## Getting Started
 

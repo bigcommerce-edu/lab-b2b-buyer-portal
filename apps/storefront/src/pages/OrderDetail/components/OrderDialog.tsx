@@ -14,12 +14,14 @@ import {
   addProductToBcShoppingList,
   addProductToShoppingList,
   getVariantInfoBySkus,
+  searchProducts,
 } from '@/shared/service/b2b';
 import {
   type CatalogQuickVariantSku,
+  type ProductSearch,
   QUOTE_VALIDATION_ERROR_CODES,
 } from '@/shared/service/b2b/graphql/product';
-import { isB2BUserSelector, useAppSelector } from '@/store';
+import { activeCurrencyInfoSelector, isB2BUserSelector, useAppSelector } from '@/store';
 import b2bLogger from '@/utils/b3Logger';
 import { snackbar } from '@/utils/b3Tip';
 import b3TriggerCartNumber from '@/utils/b3TriggerCartNumber';
@@ -32,6 +34,7 @@ import {
 
 import { EditableProductItem, OrderProductItem } from '../../../types';
 import getReturnFormFields from '../shared/config';
+import { getOrderPicklistSelections } from '../shared/getOrderPicklistSelections';
 
 import CreateShoppingList from './CreateShoppingList';
 import OrderCheckboxProduct from './OrderCheckboxProduct';
@@ -57,6 +60,7 @@ interface OrderDialogProps {
   currentDialogData?: DialogData;
   itemKey: string;
   orderId: number;
+  currencyCode?: string;
 }
 
 interface ReturnListProps {
@@ -72,6 +76,18 @@ const getXsrfToken = (): string | undefined => {
   }
 
   return decodeURIComponent(token);
+};
+
+const indexVariantRowsBySku = (
+  rows: CatalogQuickVariantSku[],
+): Record<string, CatalogQuickVariantSku> => {
+  const bySku: Record<string, CatalogQuickVariantSku> = {};
+  rows.forEach((row) => {
+    if (row.variantSku) {
+      bySku[row.variantSku.toUpperCase()] = row;
+    }
+  });
+  return bySku;
 };
 
 const validateProducts = async (products: EditableProductItem[]) => {
@@ -101,15 +117,26 @@ export default function OrderDialog({
   setOpen,
   itemKey,
   orderId,
+  currencyCode,
 }: OrderDialogProps) {
   const navigate = useNavigate();
-  const { isBackorderEnabled, isBackorderMessagingContextEnabled, hasAnyBackorderDisplay } =
+  const { isBackorderEnabled: isReorderAtsEnabled, hasAnyBackorderDisplay } =
     useBackorderStorefrontMessaging();
+  const shouldShowBackorderUI =
+    isReorderAtsEnabled &&
+    hasAnyBackorderDisplay &&
+    (type === 'reOrder' || type === 'shoppingList');
   const isB2BUser = useAppSelector(isB2BUserSelector);
+  const { currency_code: activeCurrencyCode } = useAppSelector(activeCurrencyInfoSelector);
+  const companyInfoId = useAppSelector(({ company }) => company.companyInfo.id);
+  const customerGroupId = useAppSelector(({ company }) => company.customer.customerGroupId);
   const [isOpenCreateShopping, setOpenCreateShopping] = useState(false);
   const [openShoppingList, setOpenShoppingList] = useState(false);
   const [editableProducts, setEditableProducts] = useState<EditableProductItem[]>([]);
   const [variantInfoList, setVariantInfoList] = useState<CatalogQuickVariantSku[]>([]);
+  const [picklistProductsById, setPicklistProductsById] = useState<Record<number, ProductSearch>>(
+    {},
+  );
   const [isRequestLoading, setIsRequestLoading] = useState(false);
   const [checkedArr, setCheckedArr] = useState<number[]>([]);
   const [returnArr, setReturnArr] = useState<ReturnListProps[]>([]);
@@ -246,7 +273,7 @@ export default function OrderDialog({
     const items: CustomFieldItems[] = [];
     const skus: string[] = [];
     editableProducts.forEach((product) => {
-      if (checkedArr.includes(product.variant_id)) {
+      if (checkedArr.includes(product.id)) {
         items.push({
           quantity: parseInt(`${product.editQuantity}`, 10) || 1,
           productId: product.product_id,
@@ -288,7 +315,7 @@ export default function OrderDialog({
   };
 
   const handleReorderBackend = async () => {
-    const items = editableProducts.filter((product) => checkedArr.includes(product.variant_id));
+    const items = editableProducts.filter((product) => checkedArr.includes(product.id));
 
     if (items.length <= 0) {
       return;
@@ -366,9 +393,11 @@ export default function OrderDialog({
     // This will throw if there are errors, no need to check the response
     await createOrUpdateExistingCart(validItems);
 
-    const successfulVariantIds = validItems.map((item) => item.variantId);
+    const successfulLineItemIds = validItems
+      .map((item) => editableProducts.find((p) => p.product_id === item.productId)?.id)
+      .filter((id): id is number => id != null);
 
-    if (successfulVariantIds.length === checkedArr.length) {
+    if (validItems.length === checkedArr.length) {
       setOpen(false);
       setReorderValidationBanner(false);
       showSuccessSnackbarWithCartLink(b3Lang('orderDetail.reorder.productsAdded'));
@@ -376,9 +405,7 @@ export default function OrderDialog({
       showSuccessSnackbarWithCartLink(
         b3Lang('orderDetail.reorder.partialSuccess', { count: validItems.length }),
       );
-      setCheckedArr((prev) =>
-        prev.filter((variantId) => !successfulVariantIds.includes(variantId)),
-      );
+      setCheckedArr((prev) => prev.filter((id) => !successfulLineItemIds.includes(id)));
     }
   };
 
@@ -386,7 +413,7 @@ export default function OrderDialog({
     try {
       setIsRequestLoading(true);
 
-      if (isBackorderEnabled) {
+      if (isReorderAtsEnabled) {
         await handleReorderBackend();
       } else {
         await handleReorderOnFrontend();
@@ -438,29 +465,30 @@ export default function OrderDialog({
   const handleShoppingConfirm = async (id: string) => {
     setIsRequestLoading(true);
     try {
-      const items = editableProducts.map((product) => {
-        const {
-          product_id: productId,
-          variant_id: variantId,
-          editQuantity,
-          product_options: productOptions,
-        } = product;
+      const params = editableProducts
+        .filter((product) => checkedArr.includes(product.id))
+        .map((product) => {
+          const {
+            product_id: productId,
+            variant_id: variantId,
+            editQuantity,
+            product_options: productOptions,
+          } = product;
 
-        return {
-          productId: Number(productId),
-          variantId,
-          quantity: Number(editQuantity),
-          optionList: productOptions.map((option) => {
-            const { product_option_id: optionId, value: optionValue } = option;
+          return {
+            productId: Number(productId),
+            variantId,
+            quantity: Number(editQuantity),
+            optionList: productOptions.map((option) => {
+              const { product_option_id: optionId, value: optionValue } = option;
 
-            return {
-              optionId: `attribute[${optionId}]`,
-              optionValue,
-            };
-          }),
-        };
-      });
-      const params = items.filter((item) => checkedArr.includes(Number(item.variantId)));
+              return {
+                optionId: `attribute[${optionId}]`,
+                optionValue,
+              };
+            }),
+          };
+        });
 
       const addToShoppingList = isB2BUser ? addProductToShoppingList : addProductToBcShoppingList;
 
@@ -494,7 +522,7 @@ export default function OrderDialog({
     setOpenShoppingList(true);
   };
 
-  const reorderInventoryBySku = useMemo(() => {
+  const catalogInventoryBySku = useMemo(() => {
     const map: Record<string, CatalogQuickVariantSku> = {};
     variantInfoList.forEach((row) => {
       if (row.variantSku) {
@@ -507,6 +535,8 @@ export default function OrderDialog({
   useEffect(() => {
     if (!open) {
       setVariantInfoList([]);
+      setPicklistProductsById({});
+      setIsRequestLoading(false);
       return () => {};
     }
 
@@ -518,31 +548,83 @@ export default function OrderDialog({
     );
     setCheckedArr([]);
     setVariantInfoList([]);
+    setPicklistProductsById({});
 
     let cancelled = false;
 
     setReorderValidationBanner(false);
 
-    const getVariantInfoByList = async () => {
+    const loadInventory = async () => {
       const visibleProducts = products.filter((item: OrderProductItem) => item?.isVisible);
 
       const visibleSkus = visibleProducts.map((product) => product.sku);
 
-      if (visibleSkus.length === 0) return;
+      if (visibleSkus.length === 0) {
+        setIsRequestLoading(false);
+        return;
+      }
 
-      const { variantSku: nextVariantInfoList = [] } = await getVariantInfoBySkus(visibleSkus);
+      setIsRequestLoading(true);
 
-      if (!cancelled) {
-        setVariantInfoList(nextVariantInfoList);
+      try {
+        const { variantSku: nextVariantInfoList = [] } = await getVariantInfoBySkus(visibleSkus);
+
+        const nextPicklistProductsById: Record<number, ProductSearch> = {};
+        if (shouldShowBackorderUI) {
+          const variantRowsBySku = indexVariantRowsBySku(nextVariantInfoList);
+
+          const picklistProductIds = [
+            ...new Set(
+              visibleProducts.flatMap((product) =>
+                getOrderPicklistSelections(product, variantRowsBySku).map(
+                  (selection) => selection.productId,
+                ),
+              ),
+            ),
+          ];
+
+          if (picklistProductIds.length > 0) {
+            try {
+              const { productsSearch = [] } = await searchProducts({
+                productIds: picklistProductIds,
+                currencyCode: activeCurrencyCode,
+                companyId: companyInfoId,
+                customerGroupId,
+              });
+              productsSearch.forEach((product: ProductSearch) => {
+                nextPicklistProductsById[Number(product.id)] = product;
+              });
+            } catch (error) {
+              b2bLogger.error(error);
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setVariantInfoList(nextVariantInfoList);
+          setPicklistProductsById(nextPicklistProductsById);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsRequestLoading(false);
+        }
       }
     };
 
-    getVariantInfoByList();
+    loadInventory();
 
     return () => {
       cancelled = true;
     };
-  }, [isB2BUser, open, products]);
+  }, [
+    isB2BUser,
+    open,
+    products,
+    activeCurrencyCode,
+    companyInfoId,
+    customerGroupId,
+    shouldShowBackorderUI,
+  ]);
 
   const handleProductChange = (products: EditableProductItem[]) => {
     if (type === 'reOrder') {
@@ -588,12 +670,12 @@ export default function OrderDialog({
             checkedArr={checkedArr}
             setCheckedArr={setCheckedArr}
             setReturnArr={setReturnArr}
-            textAlign={isMobile ? 'left' : 'right'}
             type={type}
-            reorderInventoryBySku={reorderInventoryBySku}
-            reorderBackorderUiEnabled={
-              isBackorderMessagingContextEnabled && hasAnyBackorderDisplay && type === 'reOrder'
-            }
+            catalogInventoryBySku={catalogInventoryBySku}
+            backorderUiEnabled={shouldShowBackorderUI}
+            showReorderAtsHelper={type === 'reOrder' && isReorderAtsEnabled}
+            currencyCode={currencyCode}
+            picklistProductsById={picklistProductsById}
           />
 
           {type === 'return' && (

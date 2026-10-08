@@ -1,7 +1,6 @@
 import { Box, Card, CardContent, Grid, Typography } from '@mui/material';
 
 import ShippingExpectationPrompt from '@/components/ShippingExpectationPrompt';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useB3Lang } from '@/lib/lang';
 import { useAppSelector } from '@/store';
 import { DisplayCurrency } from '@/types/currency';
@@ -9,6 +8,7 @@ import { currencyFormatConvert } from '@/utils/b3CurrencyFormat';
 
 interface Summary {
   originalSubtotal: string | number;
+  quotedSubtotal: string | number;
   discount: string | number;
   tax: string | number;
   shipping: string | number;
@@ -26,7 +26,7 @@ interface QuoteDetailSummaryProps {
 }
 
 export default function QuoteDetailSummary({
-  quoteSummary: { originalSubtotal, discount, tax, shipping, totalAmount },
+  quoteSummary: { originalSubtotal, quotedSubtotal, discount, tax, shipping, totalAmount },
   quoteDetailTax = 0,
   status,
   quoteDetail,
@@ -40,12 +40,6 @@ export default function QuoteDetailSummary({
   );
   const showInclusiveTaxPrice = useAppSelector(({ global }) => global.showInclusiveTaxPrice);
   const backorderEnabled = useAppSelector(({ global }) => global.backorderEnabled);
-  const isBackorderMessagingEnabled = useFeatureFlag(
-    'BACK-134.backorders_phase_1_1_control_messaging_on_storefront',
-  );
-  const isCurrencySymbolPlacementFixEnabled = useFeatureFlag(
-    'B2B-3876.fix_quote_currency_symbol_placement',
-  );
   const { showDefaultShippingExpectationPrompt, defaultShippingExpectationPrompt } = useAppSelector(
     ({ global }) => global.backorderDisplaySettings,
   );
@@ -57,9 +51,7 @@ export default function QuoteDetailSummary({
     return showInclusiveTaxPrice ? price + quoteDetailTax : price;
   };
 
-  const effectiveCurrency = isCurrencySymbolPlacementFixEnabled
-    ? (currency ?? quoteDetail.currency)
-    : quoteDetail.currency;
+  const effectiveCurrency = currency ?? quoteDetail.currency;
 
   const priceFormat = (price: number) =>
     currencyFormatConvert(price, {
@@ -116,7 +108,7 @@ export default function QuoteDetailSummary({
   };
 
   const subtotalPrice = Number(originalSubtotal);
-  const quotedSubtotal = Number(originalSubtotal) - Number(discount);
+  const quotedSubtotalPrice = Number(quotedSubtotal);
   return (
     <Card data-testid="quote-summary">
       <CardContent>
@@ -185,7 +177,7 @@ export default function QuoteDetailSummary({
                   color: '#212121',
                 }}
               >
-                {showPrice(priceFormat(getCurrentPrice(quotedSubtotal, quoteDetailTax)))}
+                {showPrice(priceFormat(getCurrentPrice(quotedSubtotalPrice, quoteDetailTax)))}
               </Typography>
             </Grid>
 
@@ -209,7 +201,7 @@ export default function QuoteDetailSummary({
                   </Typography>
                   <Typography>{showPrice(shippingAndTax.shippingVal)}</Typography>
                 </Grid>
-                {Number(status) !== 4 && isBackorderMessagingEnabled && (
+                {Number(status) !== 4 && backorderEnabled && (
                   <ShippingExpectationPrompt
                     backorderEnabled={backorderEnabled}
                     hasBackorderedItems={hasBackorderedItems}

@@ -47,34 +47,42 @@ export interface OverviewInvoice {
 }
 
 interface RecentOrdersResponse {
-  allOrders: {
-    edges: {
-      node: OverviewOrder;
-    }[]
+  data: {
+    allOrders: {
+      edges: {
+        node: OverviewOrder;
+      }[]
+    }
   }
 }
 
 interface RecentInvoicesResponse {
-  invoices: {
-    edges: {
-      node: OverviewInvoice;
-    }[]
+  data: {
+    invoices: {
+      edges: {
+        node: OverviewInvoice;
+      }[]
+    }
   }
 }
 
 interface RecentShoppingListsResponse {
-  shoppingLists: {
-    edges: {
-      node: OverviewShoppingList;
-    }[]
+  data: {
+    shoppingLists: {
+      edges: {
+        node: OverviewShoppingList;
+      }[]
+    }
   }
 }
 
 interface RecentQuotesResponse {
-  quotes: {
-    edges: {
-      node: OverviewQuote;
-    }[]
+  data: {
+    quotes: {
+      edges: {
+        node: OverviewQuote;
+      }[]
+    }
   }
 }
 
@@ -184,51 +192,51 @@ const RecentQuotesQuery = `
 `;
 
 export const getRecentOrders = async () => {
-  const resp = await B3Request.graphqlB2B({
+  const resp = await B3Request.graphqlB2B<RecentOrdersResponse>({
     query: RecentOrdersQuery,
     variables: {
       limit: 5,
       sort: "-createdAt",
     },
-  }) as RecentOrdersResponse;
+  });
 
   return resp.allOrders?.edges.map((edge) => edge.node) ?? [];
 };
 
 export const getRecentInvoices = async () => {
-  const resp = await B3Request.graphqlB2B({
+  const resp = await B3Request.graphqlB2B<RecentInvoicesResponse>({
     query: RecentInvoicesQuery,
     variables: {
       limit: 5,
       sort: "-updatedAt",
     },
-  }) as RecentInvoicesResponse;
+  });
 
   return resp.invoices?.edges.map((edge) => edge.node) ?? [];
 };
 
 export const getRecentShoppingLists = async () => {
-  const resp = await B3Request.graphqlB2B({
+  const resp = await B3Request.graphqlB2B<RecentShoppingListsResponse>({
     query: RecentShoppingListsQuery,
     variables: {
       limit: 5,
       sort: "-updatedAt",
       statuses: [ShoppingListStatus.Approved, ShoppingListStatus.Draft, ShoppingListStatus.ReadyForApproval],
     },
-  }) as RecentShoppingListsResponse;
+  });
 
   return resp.shoppingLists?.edges.map((edge) => edge.node) ?? [];
 };
 
 export const getRecentQuotes = async () => {
-  const resp = await B3Request.graphqlB2B({
+  const resp = await B3Request.graphqlB2B<RecentQuotesResponse>({
     query: RecentQuotesQuery,
     variables: {
       limit: 5,
       sort: "-updatedAt",
       status: 1,
     },
-  }) as RecentQuotesResponse;
+  });
 
   return resp.quotes?.edges.map((edge) => edge.node) ?? [];
 };

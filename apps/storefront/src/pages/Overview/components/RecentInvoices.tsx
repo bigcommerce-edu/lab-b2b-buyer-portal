@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   CardContent,
@@ -9,7 +10,6 @@ import B3Spin from "@/components/spin/B3Spin";
 import { HeadlessRoutes } from "@/constants";
 import { useB3Lang } from "@/lib/lang";
 import InvoiceStatus from "@/pages/Invoice/components/InvoiceStatus";
-import { type SetOpenPage } from '@/pages/SetOpenPage';
 import { displayFormat } from "@/utils/b3DateFormat";
 import { currencyFormat } from "@/utils/b3CurrencyFormat";
 
@@ -18,14 +18,13 @@ import OverviewCard from "./OverviewCard";
 
 interface InvoicesProps {
   startLoad: boolean;
-  setOpenPage: SetOpenPage;
 }
 
 export default function RecentInvoices({
   startLoad,
-  setOpenPage,
 }: InvoicesProps) {
   const b3Lang = useB3Lang();
+  const navigate = useNavigate();
   const currentDate = new Date().getTime();
 
   const [invoices, setInvoices] = useState<OverviewInvoice[]>([]);
@@ -96,7 +95,7 @@ export default function RecentInvoices({
             listItems={invoices}
             showPagination={false}
             />
-          <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.INVOICE })}>{b3Lang('overview.allInvoices')}</Button>
+          <Button onClick={() => navigate(HeadlessRoutes.INVOICE)}>{b3Lang('overview.allInvoices')}</Button>
         </CardContent>
       </OverviewCard>
     </B3Spin>
