@@ -19,13 +19,13 @@ interface ListItem {
   status: string;
   quoteNumber: string;
   currency?: CurrencyProps | DisplayCurrency;
+  totalIsTbd?: boolean;
 }
 
 interface QuoteItemCardProps {
   goToDetail: (val: ListItem, status: number) => void;
   item: ListItem;
   currenciesMap: Record<string, DisplayCurrency>;
-  isCurrencySymbolPlacementFixEnabled: boolean;
 }
 
 const Flex = styled('div')({
@@ -36,24 +36,25 @@ const Flex = styled('div')({
 });
 
 export function QuoteItemCard(props: QuoteItemCardProps) {
-  const { item, goToDetail, currenciesMap, isCurrencySymbolPlacementFixEnabled } = props;
+  const { item, goToDetail, currenciesMap } = props;
   const theme = useTheme();
   const b3Lang = useB3Lang();
 
   const primaryColor = theme.palette.primary.main;
 
   const getTotalAmount = useMemo(() => {
-    const { totalAmount, currency } = item;
+    const { totalAmount, currency, totalIsTbd } = item;
+    if (totalIsTbd) {
+      return b3Lang('quoteDraft.quoteSummary.tbd');
+    }
     const currencyCode = currency?.currencyCode;
-    const effectiveCurrency =
-      (isCurrencySymbolPlacementFixEnabled && currencyCode && currenciesMap[currencyCode]) ||
-      currency;
+    const effectiveCurrency = (currencyCode && currenciesMap[currencyCode]) || currency;
     return currencyFormatConvert(Number(totalAmount), {
       currency: effectiveCurrency,
       isConversionRate: false,
       useCurrentCurrency: !!effectiveCurrency,
     });
-  }, [item, isCurrencySymbolPlacementFixEnabled, currenciesMap]);
+  }, [item, currenciesMap, b3Lang]);
 
   const columnAllItems: TableColumnItem<ListItem>[] = [
     {

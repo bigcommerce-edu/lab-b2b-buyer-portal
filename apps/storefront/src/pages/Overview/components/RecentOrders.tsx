@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   CardContent,
@@ -9,7 +10,6 @@ import { B3Table } from "@/components/table/B3Table";
 import B3Spin from "@/components/spin/B3Spin";
 import { HeadlessRoutes } from "@/constants";
 import { useB3Lang } from "@/lib/lang";
-import { type SetOpenPage } from '@/pages/SetOpenPage';
 import { fetchOrderSupportCases as crmFetchSupportCases } from "@/shared/service/crm-bff";
 import useCrmToken from "@/shared/service/crm-bff/useCrmToken";
 import { displayFormat } from "@/utils/b3DateFormat";
@@ -20,7 +20,6 @@ import OverviewCard from "./OverviewCard";
 
 interface OrdersProps {
   startLoad: boolean;
-  setOpenPage: SetOpenPage;
 }
 
 interface OverviewOrderWithSupportCaseStatus extends OverviewOrder {
@@ -29,11 +28,11 @@ interface OverviewOrderWithSupportCaseStatus extends OverviewOrder {
 
 export default function RecentOrders({
   startLoad,
-  setOpenPage,
 }: OrdersProps) {
   const crmToken = useCrmToken();
   
   const b3Lang = useB3Lang();
+  const navigate = useNavigate();
 
   const [b2bOrders, setB2bOrders] = useState<OverviewOrder[]>([]);
   const [orders, setOrders] = useState<OverviewOrderWithSupportCaseStatus[]>([]);
@@ -115,10 +114,10 @@ export default function RecentOrders({
             tableKey="orderId"
             showPagination={false}
             onClickRow={(item) => {
-              setOpenPage({ isOpen: true, openUrl: `/orderDetail/${item.orderId}` });
+              navigate(`/orderDetail/${item.orderId}`);
             }}
           />
-          <Button onClick={() => setOpenPage({ isOpen: true, openUrl: HeadlessRoutes.COMPANY_ORDERS })}>{b3Lang('overview.allOrders')}</Button>
+          <Button onClick={() => navigate(HeadlessRoutes.COMPANY_ORDERS)}>{b3Lang('overview.allOrders')}</Button>
         </CardContent>
       </OverviewCard>
     </B3Spin>

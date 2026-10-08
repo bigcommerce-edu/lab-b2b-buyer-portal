@@ -16,6 +16,7 @@ import {
   waitFor,
   within,
 } from 'tests/test-utils';
+import { vi } from 'vitest';
 
 import {
   QuoteEdge,
@@ -26,6 +27,8 @@ import {
 import { ShoppingListsCreatedByUser } from '@/shared/service/b2b/graphql/shoppingList';
 import { QuoteInfoState } from '@/store/slices/quoteInfo';
 import { CompanyStatus, UserTypes } from '@/types';
+
+import * as quoteSharedConfig from '../quote/shared/config';
 
 import QuotesList from './index';
 
@@ -434,6 +437,132 @@ describe('when the user is a B2B customer', () => {
       // Expiration date
       expect(allDraftQuoteCells[6]).toHaveTextContent('—');
       // Subtotal is the sum of all the items in the draft quote
+      expect(allDraftQuoteCells[7]).toHaveTextContent('$200.00');
+    });
+
+    it('shows TBD for draft subtotal when totalIsTbd is true and feature flag is enabled', async () => {
+      // Mock the price calculation since product details are not available.
+      vi.spyOn(quoteSharedConfig, 'addPrice').mockReturnValue({
+        subtotal: 200,
+        shipping: 0,
+        tax: 0,
+        grandTotal: 200,
+        totalIsTbd: true,
+      });
+
+      // Mock the server's response for submitted quotes.
+      const quotesListB2B = buildQuotesListB2BWith({
+        data: { quotes: { totalCount: 0, edges: [] } },
+      });
+      server.use(
+        graphql.query('GetQuotesList', () => HttpResponse.json(quotesListB2B)),
+        graphql.query('GetShoppingListsCreatedByUser', () =>
+          HttpResponse.json(buildShoppingListsCreatedByUserWith('WHATEVER_VALUES')),
+        ),
+      );
+
+      const quoteInfo = buildQuoteInfoStateWith({
+        draftQuoteList: [buildDraftQuoteItemWith('WHATEVER_VALUES')],
+      });
+
+      renderWithProviders(<QuotesList />, {
+        preloadedState: {
+          ...preloadedState,
+          quoteInfo,
+          global: buildGlobalStateWith({
+            featureFlags: { 'B2B-4089.use_tbd_price_on_quotes_list': true },
+          }),
+        },
+      });
+
+      const table = await screen.findByRole('table');
+      const rowOfDraftQuote = within(table).getByRole('row', { name: /Draft/ });
+      const allDraftQuoteCells = within(rowOfDraftQuote).getAllByRole('cell');
+
+      expect(allDraftQuoteCells[7]).toHaveTextContent('TBD');
+    });
+
+    it('shows numeric draft subtotal when totalIsTbd is false even with feature flag enabled', async () => {
+      // Mock the price calculation since product details are not available.
+      vi.spyOn(quoteSharedConfig, 'addPrice').mockReturnValue({
+        subtotal: 200,
+        shipping: 0,
+        tax: 0,
+        grandTotal: 200,
+        totalIsTbd: false,
+      });
+
+      // Mock the server's response for submitted quotes.
+      const quotesListB2B = buildQuotesListB2BWith({
+        data: { quotes: { totalCount: 0, edges: [] } },
+      });
+      server.use(
+        graphql.query('GetQuotesList', () => HttpResponse.json(quotesListB2B)),
+        graphql.query('GetShoppingListsCreatedByUser', () =>
+          HttpResponse.json(buildShoppingListsCreatedByUserWith('WHATEVER_VALUES')),
+        ),
+      );
+
+      const quoteInfo = buildQuoteInfoStateWith({
+        draftQuoteList: [buildDraftQuoteItemWith('WHATEVER_VALUES')],
+      });
+
+      renderWithProviders(<QuotesList />, {
+        preloadedState: {
+          ...preloadedState,
+          quoteInfo,
+          global: buildGlobalStateWith({
+            featureFlags: { 'B2B-4089.use_tbd_price_on_quotes_list': true },
+          }),
+        },
+      });
+
+      const table = await screen.findByRole('table');
+      const rowOfDraftQuote = within(table).getByRole('row', { name: /Draft/ });
+      const allDraftQuoteCells = within(rowOfDraftQuote).getAllByRole('cell');
+
+      expect(allDraftQuoteCells[7]).toHaveTextContent('$200.00');
+    });
+
+    it('shows numeric draft subtotal when totalIsTbd is true with feature flag disabled', async () => {
+      // Mock the price calculation since product details are not available.
+      vi.spyOn(quoteSharedConfig, 'addPrice').mockReturnValue({
+        subtotal: 200,
+        shipping: 0,
+        tax: 0,
+        grandTotal: 200,
+        totalIsTbd: true,
+      });
+
+      // Mock the server's response for submitted quotes.
+      const quotesListB2B = buildQuotesListB2BWith({
+        data: { quotes: { totalCount: 0, edges: [] } },
+      });
+      server.use(
+        graphql.query('GetQuotesList', () => HttpResponse.json(quotesListB2B)),
+        graphql.query('GetShoppingListsCreatedByUser', () =>
+          HttpResponse.json(buildShoppingListsCreatedByUserWith('WHATEVER_VALUES')),
+        ),
+      );
+
+      const quoteInfo = buildQuoteInfoStateWith({
+        draftQuoteList: [buildDraftQuoteItemWith('WHATEVER_VALUES')],
+      });
+
+      renderWithProviders(<QuotesList />, {
+        preloadedState: {
+          ...preloadedState,
+          quoteInfo,
+          global: buildGlobalStateWith({
+            featureFlags: { 'B2B-4089.use_tbd_price_on_quotes_list': false },
+          }),
+        },
+      });
+
+      const table = await screen.findByRole('table');
+      const rowOfDraftQuote = within(table).getByRole('row', { name: /Draft/ });
+      const allDraftQuoteCells = within(rowOfDraftQuote).getAllByRole('cell');
+
       expect(allDraftQuoteCells[7]).toHaveTextContent('$200.00');
     });
   });
@@ -1346,7 +1475,7 @@ describe('when the user is a B2C customer', () => {
   });
 });
 
-describe('fix_quote_currency_symbol_placement feature flag', () => {
+describe('currency symbol placement', () => {
   const nonCompany = buildCompanyStateWith({ customer: { b2bId: undefined } });
   const storeInfoWithDateFormat = buildStoreInfoStateWith({ timeFormat: { display: 'j F Y' } });
 
@@ -1404,31 +1533,41 @@ describe('fix_quote_currency_symbol_placement feature flag', () => {
     server.use(graphql.query('GetQuotesList', () => HttpResponse.json(quoteWithEurOnRight)));
   });
 
-  it('uses the saved quote currency placement when the flag is disabled', async () => {
+  it('uses the current BC currency placement for quote subtotals', async () => {
     renderWithProviders(<QuotesList />, {
       preloadedState: {
         company: nonCompany,
         storeInfo: storeInfoWithDateFormat,
         storeConfigs: storeConfigsWithUpdatedEurPlacement,
-        global: buildGlobalStateWith({
-          featureFlags: { 'B2B-3876.fix_quote_currency_symbol_placement': false },
-        }),
+        global: buildGlobalStateWith({}),
       },
     });
 
     const table = await screen.findByRole('table');
-    expect(within(table).getByRole('cell', { name: '100.00€' })).toBeInTheDocument();
+    expect(within(table).getByRole('cell', { name: '€100.00' })).toBeInTheDocument();
   });
 
-  it('uses the current BC currency placement when the flag is enabled', async () => {
+  it('places the token on the left when BC config has uppercase token_location LEFT', async () => {
+    const eurWithUppercaseLeft = JSON.parse(
+      JSON.stringify({ ...eurOnLeftInBcConfig, token_location: 'LEFT' }),
+    );
+
     renderWithProviders(<QuotesList />, {
       preloadedState: {
         company: nonCompany,
         storeInfo: storeInfoWithDateFormat,
-        storeConfigs: storeConfigsWithUpdatedEurPlacement,
-        global: buildGlobalStateWith({
-          featureFlags: { 'B2B-3876.fix_quote_currency_symbol_placement': true },
-        }),
+        storeConfigs: {
+          currencies: {
+            currencies: [eurWithUppercaseLeft],
+            channelCurrencies: {
+              channel_id: 1,
+              enabled_currencies: ['EUR'],
+              default_currency: 'EUR',
+            },
+            enteredInclusiveTax: false,
+          },
+        },
+        global: buildGlobalStateWith({}),
       },
     });
 

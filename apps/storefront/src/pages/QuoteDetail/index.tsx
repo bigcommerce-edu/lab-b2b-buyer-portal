@@ -47,11 +47,13 @@ import QuoteDetailTable from '../quote/components/QuoteDetailTable';
 import QuoteInfo from '../quote/components/QuoteInfo';
 import QuoteNote from '../quote/components/QuoteNote';
 import QuoteTermsAndConditions from '../quote/components/QuoteTermsAndConditions';
+import { useQuoteDetailBackorderState } from '../quote/hooks/useQuoteDetailBackorderState';
 import {
   getQuoteValidationErrorMessage,
   QUOTE_VALIDATION_ERROR_CODES,
   QUOTE_VALIDATION_MESSAGE_CONTEXTS,
 } from '../quote/shared/getQuoteValidationErrorMessage';
+import { buildQuoteStockSnapshot } from '../quote/utils/buildQuoteStockSnapshot';
 import getB2BQuoteExtraFields from '../quote/utils/getQuoteExtraFields';
 import { handleQuoteCheckout } from '../quote/utils/quoteCheckout';
 
@@ -115,7 +117,6 @@ function useData() {
   const emailAddress = useAppSelector(({ company }) => company.customer.emailAddress);
   const customerGroupId = useAppSelector(({ company }) => company.customer.customerGroupId);
   const role = useAppSelector(({ company }) => company.customer.role);
-
   const isB2BUser = useAppSelector(isB2BUserSelector);
   const { selectCompanyHierarchyId } = useAppSelector(
     ({ company }) => company.companyHierarchyInfo,
@@ -135,36 +136,23 @@ function useData() {
 
   const { purchasabilityPermission } = useAppSelector(rolePermissionSelector);
 
-  const handleGetProductsById = async (listProducts: ProductInfoProps[]) => {
-    if (listProducts.length > 0) {
-      const productIds: number[] = [];
+  const fetchProductsWithSearch = async (
+    listProducts: ProductInfoProps[],
+  ): Promise<ProductInfoProps[]> => {
+    if (listProducts.length === 0) return [];
 
-      listProducts.forEach((item) => {
-        if (!productIds.includes(item.productId)) {
-          productIds.push(item.productId);
-        }
-      });
+    const productIds = Array.from(new Set(listProducts.map((item) => item.productId)));
+    const options = { productIds, currencyCode, companyId, customerGroupId };
 
-      const options = { productIds, currencyCode, companyId, customerGroupId };
+    const { productsSearch } = await searchProducts(options);
+    const newProductsSearch = conversionProductsList(productsSearch);
 
-      const { productsSearch } = await searchProducts(options);
-
-      const newProductsSearch = conversionProductsList(productsSearch);
-
-      listProducts.forEach((item) => {
-        const listProduct = item;
-        const productInfo = newProductsSearch.find((search: CustomFieldItems) => {
-          const { id: productId } = search;
-
-          return Number(item.productId) === Number(productId);
-        });
-
-        listProduct.productsSearch = productInfo || {};
-      });
-
-      return listProducts;
-    }
-    return undefined;
+    return listProducts.map((item) => {
+      const productInfo = newProductsSearch.find(
+        (search: CustomFieldItems) => Number(item.productId) === Number(search.id),
+      );
+      return { ...item, productsSearch: productInfo || {} };
+    });
   };
 
   const location = useLocation();
@@ -201,10 +189,21 @@ function useData() {
     enteredInclusiveTax,
     isEnableProduct,
     purchasabilityPermission,
-    handleGetProductsById,
+    fetchProductsWithSearch,
     getQuote,
   };
 }
+
+// Returns undefined when any line item has a malformed price or quantity,
+// so the caller can fall back to (subtotal - discount) instead.
+const calculateQuotedSubtotal = (productsList: ProductInfoProps[] = []): number | undefined => {
+  const subtotal = productsList.reduce(
+    (total, { offeredPrice, quantity }) => total + Number(offeredPrice) * Number(quantity),
+    0,
+  );
+
+  return Number.isFinite(subtotal) ? subtotal : undefined;
+};
 
 const containerStyle = (isMobile: boolean) => {
   return isMobile
@@ -279,7 +278,7 @@ function QuoteDetail() {
     enteredInclusiveTax,
     isEnableProduct,
     purchasabilityPermission,
-    handleGetProductsById,
+    fetchProductsWithSearch,
     getQuote,
   } = useData();
 
@@ -287,13 +286,13 @@ function QuoteDetail() {
 
   const b3Lang = useB3Lang();
 
-  const isCurrencySymbolPlacementFixEnabled = useFeatureFlag(
-    'B2B-3876.fix_quote_currency_symbol_placement',
+  const useOfferedPriceForQuotedSubtotal = useFeatureFlag(
+    'B2B-5619.use_offered_price_for_quoted_subtotal',
   );
 
   const [quoteDetail, setQuoteDetail] = useState<any>({});
   const [productList, setProductList] = useState<ProductInfoProps[]>([]);
-  const hasBackorderedItems = productList.some((item) => (item.quantityBackordered ?? 0) > 0);
+  const { hasBackorderedItems } = useQuoteDetailBackorderState(productList, quoteDetail.status);
   const [fileList, setFileList] = useState<FileObjects[]>([]);
   const [isHideQuoteCheckout, setIsHideQuoteCheckout] = useState(true);
   const [quoteValidationErrors, setQuoteValidationErrors] = useState<
@@ -303,6 +302,7 @@ function QuoteDetail() {
 
   const [quoteSummary, setQuoteSummary] = useState({
     originalSubtotal: 0,
+    quotedSubtotal: 0,
     discount: 0,
     tax: 0,
     shipping: 0,
@@ -540,23 +540,27 @@ function QuoteDetail() {
 
     try {
       const quote = await getQuote();
-      const productsWithMoreInfo = await handleGetProductsById(quote.productsList).catch(() => {
-        return undefined;
-      });
+      const productsWithMoreInfo = await fetchProductsWithSearch(quote.productsList).catch(
+        () => undefined,
+      );
       const quoteExtraFieldInfos = await getQuoteExtraFields(quote.extraFields);
+      const productListResponse = productsWithMoreInfo ?? [];
       setQuoteDetail({
         ...quote,
         extraFields: quoteExtraFieldInfos,
       });
+      const discountedSubtotal = Number(quote.subtotal) - Number(quote.discount);
       setQuoteSummary({
         originalSubtotal: quote.subtotal,
+        quotedSubtotal: useOfferedPriceForQuotedSubtotal
+          ? (calculateQuotedSubtotal(quote.productsList) ?? discountedSubtotal)
+          : discountedSubtotal,
         discount: quote.discount,
         tax: quote.taxTotal,
         shipping: quote.shippingTotal,
         totalAmount: quote.totalAmount,
       });
 
-      const productListResponse = productsWithMoreInfo ?? [];
       setProductList(productListResponse);
 
       const { salesRep, salesRepEmail } = quote;
@@ -615,7 +619,9 @@ function QuoteDetail() {
 
       setFileList(newFileList);
 
-      return quote;
+      // On enrichment failure, fall back to the original (unenriched) productsList so the
+      // table's empty-state fallback in getQuoteTableDetails still has items to render.
+      return { ...quote, productsList: productsWithMoreInfo ?? quote.productsList };
     } catch (error: unknown) {
       if (error instanceof Error) {
         snackbar.error(error.message);
@@ -756,6 +762,11 @@ function QuoteDetail() {
       context: QUOTE_VALIDATION_MESSAGE_CONTEXTS.QUOTE,
     });
 
+  const fetchCurrentStockSnapshot = async () => {
+    const refreshed = await fetchProductsWithSearch(productList);
+    return buildQuoteStockSnapshot(refreshed);
+  };
+
   const quoteGotoCheckout = async () => {
     try {
       if (hasQuoteValidationErrors()) return;
@@ -768,6 +779,9 @@ function QuoteDetail() {
         navigate,
         b3Lang,
         formatValidationError: formatQuoteValidationError,
+        isBackorderEnabled,
+        quoteStockSnapshot: buildQuoteStockSnapshot(productList),
+        fetchCurrentStockSnapshot,
       });
     } finally {
       setQuoteCheckoutLoading(false);
@@ -824,12 +838,12 @@ function QuoteDetail() {
   }, [quoteDetail]);
 
   const displayCurrency = useMemo(() => {
-    if (isCurrencySymbolPlacementFixEnabled && quoteDetail.currency?.currencyCode) {
+    if (quoteDetail.currency?.currencyCode) {
       const currencySnapshot = currenciesMap[quoteDetail.currency.currencyCode];
       if (currencySnapshot) return currencySnapshot;
     }
     return quoteDetail.currency;
-  }, [isCurrencySymbolPlacementFixEnabled, quoteDetail.currency, currenciesMap]);
+  }, [quoteDetail.currency, currenciesMap]);
 
   useScrollBar(false);
 
@@ -1024,6 +1038,9 @@ function QuoteDetail() {
                     navigate,
                     b3Lang,
                     formatValidationError: formatQuoteValidationError,
+                    isBackorderEnabled,
+                    quoteStockSnapshot: buildQuoteStockSnapshot(productList),
+                    fetchCurrentStockSnapshot,
                   });
                 }}
               >

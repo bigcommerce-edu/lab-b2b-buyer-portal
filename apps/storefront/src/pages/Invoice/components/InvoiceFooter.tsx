@@ -6,9 +6,13 @@ import { useB3Lang } from '@/lib/lang';
 import { useAppSelector } from '@/store';
 import { BcCartData, BcCartDataLineItem, InvoiceListNode } from '@/types/invoice';
 import { snackbar } from '@/utils/b3Tip';
-import { handleGetCorrespondingCurrencyToken } from '@/utils/currencyUtils';
+import { applyCurrencyToken } from '@/utils/currencyUtils';
 
-import { formattingNumericValues, gotoInvoiceCheckoutUrl } from '../utils/payment';
+import {
+  formattingNumericValues,
+  gotoInvoiceCheckoutUrl,
+  hasMixedInvoiceCurrencies,
+} from '../utils/payment';
 
 interface InvoiceFooterProps {
   selectedPay: CustomFieldItems;
@@ -20,7 +24,7 @@ function InvoiceFooter(props: InvoiceFooterProps) {
   const b3Lang = useB3Lang();
   const [isMobile] = useMobile();
   const [selectedAccount, setSelectedAccount] = useState<number | string>(0);
-  const [currentToken, setCurrentToken] = useState<string>('$');
+  const [currentCode, setCurrentCode] = useState<string>();
 
   const isAgenting = useAppSelector(({ b2bFeatures }) => b2bFeatures.masqueradeCompany.isAgenting);
 
@@ -35,7 +39,13 @@ function InvoiceFooter(props: InvoiceFooterProps) {
 
   const { selectedPay, decimalPlaces } = props;
 
+  const hasMixedCurrency = hasMixedInvoiceCurrencies(selectedPay as InvoiceListNode[]);
+
   const handlePay = async () => {
+    if (hasMixedCurrency) {
+      return;
+    }
+
     const lineItems: BcCartDataLineItem[] = [];
     let currency = 'SGD';
 
@@ -78,6 +88,10 @@ function InvoiceFooter(props: InvoiceFooterProps) {
 
   useEffect(() => {
     if (selectedPay.length > 0) {
+      if (hasMixedInvoiceCurrencies(selectedPay as InvoiceListNode[])) {
+        return;
+      }
+
       const handleStatisticsInvoiceAmount = (checkedArr: CustomFieldItems) => {
         let amount = 0;
 
@@ -94,8 +108,7 @@ function InvoiceFooter(props: InvoiceFooterProps) {
         node: { openBalance },
       } = selectedPay[0];
 
-      const token = handleGetCorrespondingCurrencyToken(openBalance.code);
-      setCurrentToken(token);
+      setCurrentCode(openBalance.code);
       handleStatisticsInvoiceAmount(selectedPay);
     }
   }, [decimalPlaces, selectedPay]);
@@ -173,12 +186,14 @@ function InvoiceFooter(props: InvoiceFooterProps) {
               sx={{
                 fontSize: '16px',
                 fontWeight: '700',
-                color: '#000000',
+                color: hasMixedCurrency ? 'error.main' : '#000000',
               }}
             >
-              {b3Lang('invoice.footer.totalPayment', {
-                total: `${currentToken}${selectedAccount}`,
-              })}
+              {hasMixedCurrency
+                ? b3Lang('invoice.footer.differentCurrencyError')
+                : b3Lang('invoice.footer.totalPayment', {
+                    total: applyCurrencyToken(currentCode, String(selectedAccount)),
+                  })}
             </Typography>
             <Box
               sx={{
@@ -190,6 +205,7 @@ function InvoiceFooter(props: InvoiceFooterProps) {
             >
               <Button
                 variant="contained"
+                disabled={hasMixedCurrency}
                 sx={{
                   marginLeft: isMobile ? 0 : '1rem',
                   width: isMobile ? '100%' : 'auto',

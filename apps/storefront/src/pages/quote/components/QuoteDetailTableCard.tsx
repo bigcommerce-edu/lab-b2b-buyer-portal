@@ -1,14 +1,25 @@
+import { Warning as WarningIcon } from '@mui/icons-material';
 import { Box, CardContent, styled, Typography } from '@mui/material';
 
 import BackorderMessage from '@/components/BackorderMessage';
+import PicklistBackorderMessages from '@/components/PicklistBackorderMessages';
 import { PRODUCT_DEFAULT_IMAGE } from '@/constants';
 import { useBackorderStorefrontMessaging } from '@/hooks/useBackorderStorefrontMessaging';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useB3Lang } from '@/lib/lang';
+import { type ProductSearch } from '@/shared/service/b2b/graphql/product';
 import { useAppSelector } from '@/store';
 import { DisplayCurrency } from '@/types/currency';
 import { currencyFormatConvert } from '@/utils/b3CurrencyFormat';
 import { getBCPrice } from '@/utils/b3Product/b3Product';
+import {
+  getPicklistSelectionsFromStoredOptions,
+  type PicklistBackorderHistoryChild,
+} from '@/utils/catalogBackorderDisplay';
+
+import {
+  getQuoteBackorderDisplayFields,
+  getQuoteItemBackendAvailability,
+} from '../utils/getQuoteBackorderDisplayFields';
 
 interface QuoteTableCardProps {
   item: any;
@@ -19,7 +30,10 @@ interface QuoteTableCardProps {
   displayDiscount: boolean;
   currency: CurrencyProps | DisplayCurrency;
   showBackorderDetails?: boolean;
-  status?: string | number;
+  picklistProductsById?: Record<number, ProductSearch>;
+  historyByProductId?: Record<number, PicklistBackorderHistoryChild>;
+  useOrderSnapshot?: boolean;
+  showInsufficientStockWarning?: boolean;
 }
 
 const StyledImage = styled('img')(() => ({
@@ -38,18 +52,25 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
     currency,
     displayDiscount,
     showBackorderDetails = false,
-    status,
+    picklistProductsById = {},
+    historyByProductId,
+    useOrderSnapshot = false,
+    showInsufficientStockWarning = false,
   } = props;
-  const isOrdered = Number(status) === 4;
   const b3Lang = useB3Lang();
-  const isCurrencySymbolPlacementFixEnabled = useFeatureFlag(
-    'B2B-3876.fix_quote_currency_symbol_placement',
-  );
   const enteredInclusiveTax = useAppSelector(
     ({ storeConfigs }) => storeConfigs.currencies.enteredInclusiveTax,
   );
-  const { isBackorderMessagingContextEnabled, hasAnyBackorderDisplay } =
-    useBackorderStorefrontMessaging();
+  const { isBackorderEnabled, hasAnyBackorderDisplay } = useBackorderStorefrontMessaging();
+
+  const stockAvailability = showInsufficientStockWarning
+    ? getQuoteItemBackendAvailability(quoteTableItem)
+    : null;
+  const insufficientStockWarning = stockAvailability?.exceedsAvailableToSell
+    ? b3Lang('quoteDraft.quoteTable.outOfStock.tipWithAvailability', {
+        availableToSell: stockAvailability.availableToSell,
+      })
+    : null;
 
   const {
     basePrice,
@@ -60,11 +81,14 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
     sku,
     notes,
     offeredPrice,
-    backorderMessage,
-    quantityBackordered,
-    totalOnHand,
     productsSearch: { productUrl, variants = [] },
   } = quoteTableItem;
+
+  const backorderFields = getQuoteBackorderDisplayFields(quoteTableItem, { useOrderSnapshot });
+  const backorderContextEnabled = isBackorderEnabled && hasAnyBackorderDisplay;
+  const picklistSelections = backorderContextEnabled
+    ? getPicklistSelectionsFromStoredOptions(quoteTableItem)
+    : [];
 
   const taxRate = getTaxRate(variants);
   const taxPrice = enteredInclusiveTax
@@ -152,12 +176,36 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
           <Typography variant="body1" color="#616161">
             {notes}
           </Typography>
-          {isBackorderMessagingContextEnabled && hasAnyBackorderDisplay && !isOrdered && (
+          {insufficientStockWarning && (
+            <Box
+              sx={{
+                color: 'red',
+                mt: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                '& svg': { mr: '0.5rem' },
+              }}
+            >
+              <WarningIcon color="error" fontSize="small" />
+              {insufficientStockWarning}
+            </Box>
+          )}
+          {isBackorderEnabled && hasAnyBackorderDisplay && backorderFields && (
             <BackorderMessage
-              totalOnHand={totalOnHand}
-              quantityBackordered={quantityBackordered}
-              backorderMessage={backorderMessage}
+              totalOnHand={backorderFields.totalOnHand}
+              quantityBackordered={backorderFields.quantityBackordered}
+              backorderMessage={backorderFields.backorderMessage}
               visible={showBackorderDetails}
+            />
+          )}
+          {picklistSelections.length > 0 && (
+            <PicklistBackorderMessages
+              selections={picklistSelections}
+              picklistProductsById={picklistProductsById}
+              qty={Number(quantity) || 0}
+              visible={showBackorderDetails}
+              backorderUiEnabled={backorderContextEnabled}
+              historyByProductId={historyByProductId}
             />
           )}
           <Typography
@@ -176,7 +224,7 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
                 {`${showPrice(
                   currencyFormatConvert(price, {
                     currency,
-                    useCurrentCurrency: isCurrencySymbolPlacementFixEnabled,
+                    useCurrentCurrency: true,
                   }),
                   quoteTableItem,
                 )}`}
@@ -191,7 +239,7 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
               {`${showPrice(
                 currencyFormatConvert(offeredPrice, {
                   currency,
-                  useCurrentCurrency: isCurrencySymbolPlacementFixEnabled,
+                  useCurrentCurrency: true,
                 }),
                 quoteTableItem,
               )}`}
@@ -222,7 +270,7 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
                 {`${showPrice(
                   currencyFormatConvert(total, {
                     currency,
-                    useCurrentCurrency: isCurrencySymbolPlacementFixEnabled,
+                    useCurrentCurrency: true,
                   }),
                   quoteTableItem,
                 )}`}
@@ -237,7 +285,7 @@ function QuoteDetailTableCard(props: QuoteTableCardProps) {
               {`${showPrice(
                 currencyFormatConvert(totalWithDiscount, {
                   currency,
-                  useCurrentCurrency: isCurrencySymbolPlacementFixEnabled,
+                  useCurrentCurrency: true,
                 }),
                 quoteTableItem,
               )}`}

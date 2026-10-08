@@ -12,16 +12,8 @@ export const featureFlags = [
     name: 'passWithModifiersToProductUpload',
   },
   {
-    key: 'B2B-4231.chunk_product_searches_in_csv_upload',
-    name: 'chunkProductSearchesInCsvUpload',
-  },
-  {
     key: 'B2B-3705.increase_graphql_limits_inline_with_platform_api',
     name: 'increaseGraphQLLimitsInlineWithPlatformApi',
-  },
-  {
-    key: 'BACK-134.backorders_phase_1_1_control_messaging_on_storefront',
-    name: 'backordersPhase1_1ControlMessagingOnStorefront',
   },
   {
     key: 'B2B-4466.use_register_company_flow',
@@ -36,8 +28,40 @@ export const featureFlags = [
     name: 'b2bMultiLanguage',
   },
   {
-    key: 'B2B-3876.fix_quote_currency_symbol_placement',
-    name: 'fixQuoteCurrencySymbolPlacement',
+    key: 'LOCAL-3280.B2B_email_multi_language',
+    name: 'b2bEmailMultiLanguage',
+  },
+  {
+    key: 'PROJECT-7920.use_bc_account_settings',
+    name: 'useBcAccountSettings',
+  },
+  {
+    key: 'PROJECT-7920.use_bc_login_and_authorisation',
+    name: 'useBcLoginAndAuthorisation',
+  },
+  {
+    key: 'B2B-4870.default_buyer_portal_styling_on_login_page',
+    name: 'defaultBuyerPortalStylingOnLoginPage',
+  },
+  {
+    key: 'B2B-4089.use_tbd_price_on_quotes_list',
+    name: 'useTbdPriceOnQuotesList',
+  },
+  {
+    key: 'B2B-4912.buyer_portal_native_link_interception',
+    name: 'buyerPortalNativeLinkInterception',
+  },
+  {
+    key: 'B2B-5309.dedupe_storefront_config_fetch_calls',
+    name: 'dedupeStorefrontConfigFetchCalls',
+  },
+  {
+    key: 'B2B-2219.fix_buyer_portal_quote_message_sender_name',
+    name: 'fixBuyerPortalQuoteMessageSenderName',
+  },
+  {
+    key: 'B2B-5619.use_offered_price_for_quoted_subtotal',
+    name: 'useOfferedPriceForQuotedSubtotal',
   },
 ] as const;
 

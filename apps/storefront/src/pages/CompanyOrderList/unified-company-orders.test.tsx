@@ -3,6 +3,7 @@ import {
   buildCompanyStateWith,
   builder,
   buildGlobalStateWith,
+  buildSfGqlMoneyWith,
   buildStoreInfoStateWith,
   bulk,
   faker,
@@ -21,6 +22,7 @@ import { when } from 'vitest-when';
 
 import {
   type GetCompanyOrdersResponse,
+  type GetCustomersWithOrdersResponse,
   type Order,
   type OrderPlacedBy,
   OrdersSortInput,
@@ -48,7 +50,7 @@ const buildSfGqlOrderWith = builder<Order>(() => ({
   entityId: faker.number.int({ min: 1000, max: 99999 }),
   orderedAt: { utc: faker.date.past().toISOString() },
   updatedAt: { utc: faker.date.past().toISOString() },
-  status: { value: 'PENDING', label: 'Pending' },
+  status: { value: 'AWAITING_FULFILLMENT', label: 'Awaiting fulfillment' },
   billingAddress: {
     firstName: faker.person.firstName(),
     lastName: faker.person.lastName(),
@@ -63,30 +65,29 @@ const buildSfGqlOrderWith = builder<Order>(() => ({
     phone: faker.phone.number(),
     email: faker.internet.email(),
   },
-  subTotal: { currencyCode: 'USD', value: 100 },
+  subTotal: buildSfGqlMoneyWith({ value: 100 }),
   discountedSubTotal: null,
-  shippingCostTotal: { currencyCode: 'USD', value: 9.99 },
-  handlingCostTotal: { currencyCode: 'USD', value: 0 },
-  wrappingCostTotal: { currencyCode: 'USD', value: 0 },
-  taxTotal: { currencyCode: 'USD', value: 5 },
-  totalIncTax: { currencyCode: 'USD', value: 114.99 },
+  shippingCostTotal: buildSfGqlMoneyWith({ value: 9.99 }),
+  handlingCostTotal: buildSfGqlMoneyWith({ value: 0 }),
+  wrappingCostTotal: buildSfGqlMoneyWith({ value: 0 }),
+  taxTotal: buildSfGqlMoneyWith({ value: 5 }),
+  totalIncTax: buildSfGqlMoneyWith({ value: 114.99 }),
   isTaxIncluded: false,
-  taxes: [{ name: 'Tax', amount: { currencyCode: 'USD', value: 5 } }],
+  taxes: [{ name: 'Tax', amount: buildSfGqlMoneyWith({ value: 5 }) }],
   discounts: {
     couponDiscounts: [],
-    nonCouponDiscountTotal: { currencyCode: 'USD', value: 0 },
+    nonCouponDiscountTotal: buildSfGqlMoneyWith({ value: 0 }),
     totalDiscount: null,
   },
   customerMessage: null,
   totalProductQuantity: 2,
   consignments: null,
   reference: faker.string.alphanumeric(8),
+  poNumber: faker.string.alphanumeric(6),
   company: { entityId: faker.number.int({ min: 1, max: 999 }), name: faker.company.name() },
   placedBy: buildPlacedByWith('WHATEVER_VALUES'),
   history: [],
-  quote: null,
   invoice: null,
-  extraFields: [],
 }));
 
 const buildCompanyOrdersResponseWith = builder<GetCompanyOrdersResponse>(() => {
@@ -157,6 +158,41 @@ const superAdminMasqueradingState = (featureFlags: Record<string, boolean>) => (
   storeInfo: buildStoreInfoStateWith({ timeFormat: { display: 'j F Y' } }),
 });
 
+const b2bStateWithCurrency = (featureFlags: Record<string, boolean>) => ({
+  ...b2bStateWithFlag(featureFlags),
+  storeConfigs: {
+    currencies: {
+      currencies: [
+        {
+          id: '1',
+          is_default: true,
+          last_updated: '',
+          country_iso2: 'US',
+          default_for_country_codes: ['USD'],
+          currency_code: 'USD',
+          currency_exchange_rate: '1.0000000000',
+          name: 'United States Dollar',
+          token: '$',
+          auto_update: false,
+          decimal_token: '.',
+          decimal_places: 2,
+          enabled: true,
+          is_transactional: true,
+          token_location: 'left' as const,
+          thousands_token: ',',
+        },
+      ],
+      channelCurrencies: {
+        channel_id: 1,
+        enabled_currencies: ['USD'],
+        default_currency: 'USD',
+      },
+      enteredInclusiveTax: false,
+    },
+    activeCurrency: { node: { isActive: true, entityId: 1 } },
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -215,6 +251,25 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
       graphql.query('GetOrdersCreatedByUser', () =>
         HttpResponse.json({ data: { createdByUser: { results: [] } } }),
       ),
+      graphql.query('GetCustomersWithOrders', () =>
+        HttpResponse.json({
+          data: {
+            customer: {
+              activeCompany: {
+                customersWithOrders: {
+                  edges: [],
+                  pageInfo: {
+                    hasNextPage: false,
+                    hasPreviousPage: false,
+                    startCursor: null,
+                    endCursor: null,
+                  },
+                },
+              },
+            },
+          },
+        } satisfies GetCustomersWithOrdersResponse),
+      ),
     );
   });
 
@@ -269,9 +324,9 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
     it('renders company orders with all fields', async () => {
       const order = buildSfGqlOrderWith({
         entityId: 12345,
-        reference: 'PO-9876',
+        poNumber: 'PO-9876',
         status: { value: 'COMPLETED', label: 'Completed' },
-        totalIncTax: { currencyCode: 'USD', value: 250 },
+        totalIncTax: buildSfGqlMoneyWith({ value: 250 }),
         orderedAt: { utc: '2025-03-13T00:00:00Z' },
         company: { entityId: 1, name: 'Acme Corp' },
         placedBy: { entityId: 1, firstName: 'Jane', lastName: 'Doe', email: 'jane@acme.com' },
@@ -351,10 +406,14 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
       expect(headerTexts).toContain('Placed by');
     });
 
-    it('formats currency correctly', async () => {
+    it("displays the order's own currency via formattedV2, ignoring the store's currency settings", async () => {
       const order = buildSfGqlOrderWith({
-        entityId: 77777,
-        totalIncTax: { currencyCode: 'USD', value: 1234.56 },
+        entityId: 90909,
+        totalIncTax: buildSfGqlMoneyWith({
+          currencyCode: 'USD',
+          value: 319.95,
+          formattedV2: '319.95$$$',
+        }),
       });
 
       server.use(
@@ -364,7 +423,7 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
               customer: {
                 activeCompany: {
                   orders: {
-                    edges: [{ node: order, cursor: 'cur' }],
+                    edges: [{ node: order, cursor: 'fmt' }],
                     pageInfo: {
                       hasNextPage: false,
                       hasPreviousPage: false,
@@ -380,12 +439,14 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
         ),
       );
 
-      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOn) });
+      renderWithProviders(<CompanyOrders />, {
+        preloadedState: b2bStateWithCurrency(flagOn),
+      });
 
       await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
 
-      const row = screen.getByText('77777').closest('tr')!;
-      expect(within(row).getByText('$1,234.56')).toBeInTheDocument();
+      const row = screen.getByText('90909').closest('tr')!;
+      expect(within(row).getByText('319.95$$$')).toBeVisible();
     });
 
     describe('sorting', () => {
@@ -547,14 +608,10 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
         );
       });
 
-      it('uses PLACED_BY_Z_TO_A when first activating the Placed by column', async () => {
-        const getOrders = vi
-          .fn()
-          .mockReturnValue(buildCompanyOrdersResponseWith('WHATEVER_VALUES'));
-
+      it('does not allow sorting by the Placed by column (backend support incomplete)', async () => {
         server.use(
-          graphql.query('GetCompanyOrders', ({ variables }) =>
-            HttpResponse.json(getOrders(variables)),
+          graphql.query('GetCompanyOrders', () =>
+            HttpResponse.json(buildCompanyOrdersResponseWith('WHATEVER_VALUES')),
           ),
         );
 
@@ -562,19 +619,9 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
 
         await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
 
-        when(getOrders)
-          .calledWith(expect.objectContaining({ sortBy: OrdersSortInput.PLACED_BY_Z_TO_A }))
-          .thenReturn(buildCompanyOrdersResponseWith('WHATEVER_VALUES'));
-
-        await userEvent.click(
-          within(screen.getByRole('columnheader', { name: 'Placed by' })).getByRole('button'),
-        );
-
-        await waitFor(() => {
-          expect(getOrders).toHaveBeenCalledWith(
-            expect.objectContaining({ sortBy: OrdersSortInput.PLACED_BY_Z_TO_A }),
-          );
-        });
+        expect(
+          within(screen.getByRole('columnheader', { name: 'Placed by' })).queryByRole('button'),
+        ).not.toBeInTheDocument();
       });
 
       it('clears cursor variables when sort changes after paging forward', async () => {
@@ -1533,6 +1580,240 @@ describe('Company Orders — unified SF GQL orders (B2B-4616)', () => {
           to: '2022-11-26',
         });
       });
+    });
+  });
+
+  describe('placed-by filter', () => {
+    const jane: OrderPlacedBy = {
+      entityId: 501,
+      firstName: 'Jane',
+      lastName: 'Doe',
+      email: 'jane@acme.com',
+    };
+    const bob: OrderPlacedBy = {
+      entityId: 502,
+      firstName: 'Bob',
+      lastName: 'Smith',
+      email: 'bob@acme.com',
+    };
+
+    const customersWithOrdersResponse: GetCustomersWithOrdersResponse = {
+      data: {
+        customer: {
+          activeCompany: {
+            customersWithOrders: {
+              edges: [
+                { node: jane, cursor: 'c1' },
+                { node: bob, cursor: 'c2' },
+              ],
+              pageInfo: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                startCursor: 'c1',
+                endCursor: 'c2',
+              },
+            },
+          },
+        },
+      },
+    };
+
+    it('populates the Placed By dropdown from GetCustomersWithOrders (not legacy query)', async () => {
+      const sfGqlUsersHandler = vi.fn();
+      const legacyUsersHandler = vi.fn();
+
+      server.use(
+        graphql.query('GetCustomersWithOrders', () => {
+          sfGqlUsersHandler();
+          return HttpResponse.json(customersWithOrdersResponse);
+        }),
+        graphql.query('GetOrdersCreatedByUser', () => {
+          legacyUsersHandler();
+          return HttpResponse.json({ data: { createdByUser: { results: [] } } });
+        }),
+        graphql.query('GetCompanyOrders', () =>
+          HttpResponse.json(buildCompanyOrdersResponseWith('WHATEVER_VALUES')),
+        ),
+      );
+
+      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOn) });
+
+      await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
+
+      expect(sfGqlUsersHandler).toHaveBeenCalled();
+      expect(legacyUsersHandler).not.toHaveBeenCalled();
+
+      await userEvent.click(screen.getByRole('button', { name: 'edit' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Filters' });
+
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Placed by' }));
+      expect(screen.getByRole('option', { name: /Jane Doe/ })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /Bob Smith/ })).toBeInTheDocument();
+    });
+
+    it('sends customerId when a placed-by user is selected', async () => {
+      const getOrders = vi.fn().mockReturnValue(buildCompanyOrdersResponseWith('WHATEVER_VALUES'));
+
+      server.use(
+        graphql.query('GetCustomersWithOrders', () =>
+          HttpResponse.json(customersWithOrdersResponse),
+        ),
+        graphql.query('GetCompanyOrders', ({ variables }) =>
+          HttpResponse.json(getOrders(variables)),
+        ),
+      );
+
+      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOn) });
+
+      await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
+
+      await userEvent.click(screen.getByRole('button', { name: 'edit' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Filters' });
+
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Placed by' }));
+      await userEvent.click(screen.getByRole('option', { name: /Jane Doe \(jane@acme\.com\)/ }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      await waitFor(() => {
+        const { calls } = getOrders.mock;
+        const lastVars = calls[calls.length - 1]?.[0] as {
+          filters?: { customerId?: number[] };
+        };
+        expect(lastVars?.filters?.customerId).toEqual([501]);
+      });
+    });
+
+    it('removes customerId when placed-by filter is cleared', async () => {
+      const getOrders = vi.fn().mockReturnValue(buildCompanyOrdersResponseWith('WHATEVER_VALUES'));
+
+      server.use(
+        graphql.query('GetCustomersWithOrders', () =>
+          HttpResponse.json(customersWithOrdersResponse),
+        ),
+        graphql.query('GetCompanyOrders', ({ variables }) =>
+          HttpResponse.json(getOrders(variables)),
+        ),
+      );
+
+      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOn) });
+
+      await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
+
+      // Apply a placed-by filter first
+      await userEvent.click(screen.getByRole('button', { name: 'edit' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Filters' });
+
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Placed by' }));
+      await userEvent.click(screen.getByRole('option', { name: /Bob Smith \(bob@acme\.com\)/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      await waitFor(() => {
+        const { calls } = getOrders.mock;
+        const lastVars = calls[calls.length - 1]?.[0] as {
+          filters?: { customerId?: number[] };
+        };
+        expect(lastVars?.filters?.customerId).toEqual([502]);
+      });
+
+      // Clear via the "Clear Filters" button
+      await userEvent.click(screen.getByRole('button', { name: 'edit' }));
+      await screen.findByRole('dialog', { name: 'Filters' });
+      await userEvent.click(screen.getByRole('button', { name: /Clear Filters/i }));
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      await waitFor(() => {
+        const { calls } = getOrders.mock;
+        const lastVars = calls[calls.length - 1]?.[0] as {
+          filters?: { customerId?: number[] };
+        };
+        expect(lastVars?.filters?.customerId).toBeUndefined();
+      });
+    });
+
+    it('composes customerId with search and status filters', async () => {
+      vi.setSystemTime(new Date('21 November 2022'));
+
+      const getOrders = vi.fn().mockReturnValue(buildCompanyOrdersResponseWith('WHATEVER_VALUES'));
+
+      server.use(
+        graphql.query('GetCustomersWithOrders', () =>
+          HttpResponse.json(customersWithOrdersResponse),
+        ),
+        graphql.query('GetOrderStatuses', () =>
+          HttpResponse.json(
+            buildLegacyB2BOrderStatusesResponseWith({
+              data: {
+                orderStatuses: [
+                  buildLegacyOrderStatusWith({ systemLabel: 'Pending', customLabel: 'Pending' }),
+                ],
+              },
+            }),
+          ),
+        ),
+        graphql.query('GetCompanyOrders', ({ variables }) =>
+          HttpResponse.json(getOrders(variables)),
+        ),
+      );
+
+      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOn) });
+
+      await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
+
+      // Apply placed-by + status via filter dialog
+      await userEvent.click(screen.getByRole('button', { name: 'edit' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Filters' });
+
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Placed by' }));
+      await userEvent.click(screen.getByRole('option', { name: /Jane Doe \(jane@acme\.com\)/ }));
+
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Order status' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Pending' }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      await waitFor(() => {
+        const { calls } = getOrders.mock;
+        const lastVars = calls[calls.length - 1]?.[0] as {
+          filters?: { customerId?: number[]; status?: string[] };
+        };
+        expect(lastVars?.filters?.customerId).toEqual([501]);
+        expect(lastVars?.filters?.status).toEqual(['Pending']);
+      });
+    });
+
+    it('uses legacy GetOrdersCreatedByUser when flag is off', async () => {
+      const sfGqlUsersHandler = vi.fn();
+      const legacyUsersHandler = vi.fn();
+
+      server.use(
+        graphql.query('GetCustomersWithOrders', () => {
+          sfGqlUsersHandler();
+          return HttpResponse.json(customersWithOrdersResponse);
+        }),
+        graphql.query('GetOrdersCreatedByUser', () => {
+          legacyUsersHandler();
+          return HttpResponse.json({ data: { createdByUser: { results: [] } } });
+        }),
+        graphql.query('GetAllOrders', () =>
+          HttpResponse.json({
+            data: {
+              allOrders: {
+                totalCount: 0,
+                pageInfo: { hasNextPage: false, hasPreviousPage: false },
+                edges: [],
+              },
+            },
+          }),
+        ),
+      );
+
+      renderWithProviders(<CompanyOrders />, { preloadedState: b2bStateWithFlag(flagOff) });
+
+      await waitForElementToBeRemoved(() => screen.queryAllByRole('progressbar'));
+
+      expect(legacyUsersHandler).toHaveBeenCalled();
+      expect(sfGqlUsersHandler).not.toHaveBeenCalled();
     });
   });
 });

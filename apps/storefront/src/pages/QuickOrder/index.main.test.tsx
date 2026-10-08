@@ -115,6 +115,11 @@ interface VariantInfo {
   purchasingDisabled: '1' | '0';
   variantSku: string;
   imageUrl: string;
+  inventoryTracking?: string;
+  availableToSell?: number;
+  unlimitedBackorder?: boolean;
+  totalOnHand?: number | null;
+  backorderMessage?: string | null;
 }
 
 interface VariantInfoResponse {
@@ -425,6 +430,21 @@ const buildAddCartLineItemsResponseWith = builder(() => ({
 const storeInfoWithDateFormat = buildStoreInfoStateWith({ timeFormat: { display: 'j F Y' } });
 
 const preloadedState = { company: approvedB2BCompany, storeInfo: storeInfoWithDateFormat };
+
+const backorderPreloadedState = {
+  company: approvedB2BCompany,
+  storeInfo: storeInfoWithDateFormat,
+  global: buildGlobalStateWith({
+    backorderEnabled: true,
+    backorderDisplaySettings: {
+      showQuantityOnBackorder: true,
+      showQuantityOnHand: true,
+      showBackorderMessage: true,
+      showDefaultShippingExpectationPrompt: false,
+      defaultShippingExpectationPrompt: '',
+    },
+  }),
+};
 
 beforeEach(() => {
   set(window, 'b2b.callbacks.dispatchEvent', vi.fn());
@@ -4322,6 +4342,158 @@ describe('when backorder validation is enabled', () => {
       );
     });
 
+    it('shows the originally-uploaded sku in the error toast and adds the valid product to cart when catalog lookup returns null sku', async () => {
+      const getRecentlyOrderedProducts = vi.fn().mockReturnValue({
+        data: { orderedProducts: { totalCount: 0, edges: [] } },
+      });
+
+      const searchProducts = vi.fn().mockReturnValue({ data: { productsSearch: [] } });
+
+      const csvUpload = vi.fn().mockReturnValue({
+        data: {
+          productUpload: buildCSVUploadWith({
+            result: {
+              validProduct: [
+                buildCSVProductWith({
+                  products: {
+                    productId: '1',
+                    variantId: 2,
+                    productName: 'Test Product 1',
+                    variantSku: 'TEST-SKU-123',
+                    option: [],
+                  },
+                  qty: '2',
+                  row: 1,
+                  sku: 'TEST-SKU-123',
+                }),
+                buildCSVProductWith({
+                  products: {
+                    productId: '3',
+                    variantId: 4,
+                    productName: 'Test Product 2',
+                    variantSku: 'CATALOG-SKU-456',
+                    option: [],
+                  },
+                  qty: '1',
+                  row: 2,
+                  sku: 'TEST-SKU-456',
+                }),
+              ],
+              errorProduct: [],
+              stockErrorFile: '',
+              stockErrorSkus: [],
+            },
+          }),
+        },
+      });
+
+      const getCart = vi.fn().mockReturnValue(buildGetCartWith({}));
+      const createCartSimple = vi.fn().mockReturnValue({
+        data: { cart: { createCart: { cart: { entityId: '12345' } } } },
+      });
+
+      server.use(
+        graphql.query('RecentlyOrderedProducts', () =>
+          HttpResponse.json(getRecentlyOrderedProducts()),
+        ),
+        graphql.query('SearchProducts', () => HttpResponse.json(searchProducts())),
+        graphql.mutation('ProductUpload', () => HttpResponse.json(csvUpload())),
+        graphql.query('getCart', () => HttpResponse.json(getCart())),
+        graphql.query('ValidateProducts', () =>
+          HttpResponse.json({
+            data: {
+              validateProducts: {
+                isValid: true,
+                products: [
+                  {
+                    errorCode: '',
+                    responseType: 'SUCCESS',
+                    message: '',
+                    product: {
+                      productId: 1,
+                      variantId: 2,
+                      quantity: 2,
+                      sku: 'TEST-SKU-123',
+                      availableToSell: 100,
+                      unlimitedBackorder: false,
+                    },
+                  },
+                  {
+                    errorCode: 'OTHER',
+                    responseType: 'ERROR',
+                    message: '',
+                    product: {
+                      productId: 3,
+                      variantId: 4,
+                      quantity: 1,
+                      sku: null,
+                      availableToSell: 0,
+                      unlimitedBackorder: false,
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+        graphql.mutation('createCartSimple', () => HttpResponse.json(createCartSimple())),
+        graphql.mutation('addCartLineItemsTwo', () =>
+          HttpResponse.json(
+            buildAddCartLineItemsResponseWith({
+              data: {
+                cart: {
+                  addCartLineItems: {
+                    cart: {
+                      entityId: '12345',
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      renderWithProviders(<QuickOrder />, { preloadedState: backorderEnabledState });
+
+      await waitForElementToBeRemoved(() => screen.queryByText(/loading/i));
+
+      const bulkUploadButton = screen.getByRole('button', { name: /bulk upload csv/i });
+      await userEvent.click(bulkUploadButton);
+
+      const dialog = await screen.findByRole('dialog', { name: /bulk upload/i });
+
+      const csvContent = 'variant_sku,qty\nTEST-SKU-123,2\nTEST-SKU-456,1';
+      const file = new File([csvContent], 'products.csv', { type: 'text/csv' });
+
+      const dropzoneInput = dialog.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!dropzoneInput) {
+        throw new Error('File input not found');
+      }
+
+      await userEvent.upload(dropzoneInput, [file]);
+
+      await waitFor(() => {
+        expect(csvUpload).toHaveBeenCalled();
+      });
+
+      const addToCartButton = await screen.findByRole('button', {
+        name: /Add \d+ products to cart/i,
+      });
+      await userEvent.click(addToCartButton);
+
+      await waitFor(
+        () => {
+          expect(screen.getByText(/Products were added to cart/i)).toBeInTheDocument();
+        },
+        { timeout: 8000 },
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/TEST-SKU-456/)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/CATALOG-SKU-456/)).not.toBeInTheDocument();
+    });
+
     it(
       'handles successful CSV upload and creates new cart when no existing cart',
       { timeout: 10000 },
@@ -5257,6 +5429,380 @@ describe('when backorder validation is enabled', () => {
       await waitFor(() => {
         expect(screen.getByText(/Products were added to cart/i)).toBeInTheDocument();
       });
+    });
+  });
+});
+
+describe('when backorder messaging is enabled on purchased products', () => {
+  const variantSku = 'PP-123';
+
+  const setupPurchasedProductsTable = ({
+    totalOnHand = 2,
+    availableToSell = 4,
+    backorderMessage = 'Lead time: 2-4 weeks',
+    inventoryFetchFails = false,
+  }: {
+    totalOnHand?: number;
+    availableToSell?: number;
+    backorderMessage?: string;
+    inventoryFetchFails?: boolean;
+  } = {}) => {
+    const orderedProduct = buildRecentlyOrderedProductNodeWith({
+      node: {
+        productName: 'Laugh Canister',
+        variantSku,
+        sku: variantSku,
+        basePrice: '100',
+      },
+    });
+
+    const getRecentlyOrderedProducts = vi.fn().mockReturnValue(
+      buildGetRecentlyOrderedProductsWith({
+        data: { orderedProducts: { totalCount: 1, edges: [orderedProduct] } },
+      }),
+    );
+
+    const searchProducts = vi.fn().mockReturnValue({
+      data: {
+        productsSearch: [
+          buildSearchProductWith({
+            id: Number(orderedProduct.node.productId),
+            name: orderedProduct.node.productName,
+            sku: variantSku,
+            variants: [
+              buildVariantWith({
+                sku: variantSku,
+                variant_id: Number(orderedProduct.node.variantId),
+                product_id: Number(orderedProduct.node.productId),
+                purchasing_disabled: false,
+              }),
+            ],
+          }),
+        ],
+      },
+    });
+
+    const variantInfo = buildVariantInfoWith({
+      variantSku,
+      inventoryTracking: 'variant',
+      availableToSell,
+      unlimitedBackorder: false,
+      totalOnHand,
+      backorderMessage,
+    });
+
+    const getVariantInfoBySkus = when(vi.fn())
+      .calledWith(expect.stringContaining(`variantSkus: ["${variantSku}"]`))
+      .thenReturn(buildVariantInfoResponseWith({ data: { variantSku: [variantInfo] } }));
+
+    server.use(
+      graphql.query('RecentlyOrderedProducts', ({ query }) =>
+        HttpResponse.json(getRecentlyOrderedProducts(query)),
+      ),
+      graphql.query('SearchProducts', ({ query }) => HttpResponse.json(searchProducts(query))),
+      graphql.query('GetVariantInfoBySkus', ({ query }) =>
+        inventoryFetchFails ? HttpResponse.error() : HttpResponse.json(getVariantInfoBySkus(query)),
+      ),
+    );
+
+    return { orderedProduct };
+  };
+
+  const setupPurchasedProductsTableWithPicklist = ({
+    mainTotalOnHand = 100,
+    mainAvailableToSell = 100,
+    picklistTotalOnHand = 9,
+    picklistAvailableToSell = 10,
+  }: {
+    mainTotalOnHand?: number;
+    mainAvailableToSell?: number;
+    picklistTotalOnHand?: number;
+    picklistAvailableToSell?: number;
+  } = {}) => {
+    const modifierId = 100;
+    const optionValueId = 200;
+    const picklistProductId = 999111;
+
+    const orderedProduct = buildRecentlyOrderedProductNodeWith({
+      node: {
+        productName: 'Laugh Canister',
+        variantSku,
+        sku: variantSku,
+        basePrice: '100',
+        optionSelections: [{ option_id: modifierId, value_id: optionValueId }],
+      },
+    });
+
+    const getRecentlyOrderedProducts = vi.fn().mockReturnValue(
+      buildGetRecentlyOrderedProductsWith({
+        data: { orderedProducts: { totalCount: 1, edges: [orderedProduct] } },
+      }),
+    );
+
+    const parentProduct = buildSearchProductWith({
+      id: Number(orderedProduct.node.productId),
+      name: orderedProduct.node.productName,
+      sku: variantSku,
+      modifiers: [
+        {
+          id: modifierId,
+          type: 'product_list',
+          display_name: 'Bundle option 1',
+          required: false,
+          option_values: [{ id: optionValueId, value_data: { product_id: picklistProductId } }],
+        },
+      ],
+      variants: [
+        buildVariantWith({
+          sku: variantSku,
+          variant_id: Number(orderedProduct.node.variantId),
+          product_id: Number(orderedProduct.node.productId),
+          purchasing_disabled: false,
+        }),
+      ],
+    });
+
+    const picklistProduct = buildSearchProductWith({
+      id: picklistProductId,
+      name: 'Picklist Widget',
+      inventoryTracking: 'product',
+      availableToSell: picklistAvailableToSell,
+      unlimitedBackorder: false,
+      totalOnHand: picklistTotalOnHand,
+      backorderMessage: 'Picklist lead time: 6 weeks',
+      variants: [],
+    });
+
+    const searchProducts = vi.fn();
+    when(searchProducts)
+      .calledWith(stringContainingAll(`productIds: [${orderedProduct.node.productId}]`))
+      .thenReturn({ data: { productsSearch: [parentProduct] } });
+    when(searchProducts)
+      .calledWith(stringContainingAll(`productIds: [${picklistProductId}]`))
+      .thenReturn({ data: { productsSearch: [picklistProduct] } });
+
+    const variantInfo = buildVariantInfoWith({
+      variantSku,
+      inventoryTracking: 'variant',
+      availableToSell: mainAvailableToSell,
+      unlimitedBackorder: false,
+      totalOnHand: mainTotalOnHand,
+      backorderMessage: 'Main lead time',
+    });
+
+    const getVariantInfoBySkus = when(vi.fn())
+      .calledWith(expect.stringContaining(`variantSkus: ["${variantSku}"]`))
+      .thenReturn(buildVariantInfoResponseWith({ data: { variantSku: [variantInfo] } }));
+
+    server.use(
+      graphql.query('RecentlyOrderedProducts', ({ query }) =>
+        HttpResponse.json(getRecentlyOrderedProducts(query)),
+      ),
+      graphql.query('SearchProducts', ({ query }) => HttpResponse.json(searchProducts(query))),
+      graphql.query('GetVariantInfoBySkus', ({ query }) =>
+        HttpResponse.json(getVariantInfoBySkus(query)),
+      ),
+    );
+
+    return { orderedProduct };
+  };
+
+  it('shows backorder lines by default when qty exceeds on hand', async () => {
+    setupPurchasedProductsTable();
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    expect(await screen.findByRole('checkbox', { name: /Backorder details/i })).toBeChecked();
+
+    await waitFor(() => {
+      expect(screen.getByText('2 ready to ship')).toBeVisible();
+    });
+    expect(screen.getByText('2 will be backordered')).toBeVisible();
+    expect(screen.getByText('Lead time: 2-4 weeks')).toBeVisible();
+  });
+
+  it('hides backorder lines when toggle is turned off', async () => {
+    setupPurchasedProductsTable();
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    const backorderToggle = await screen.findByRole('checkbox', { name: /Backorder details/i });
+    expect(backorderToggle).toBeChecked();
+    expect(await screen.findByText('2 will be backordered')).toBeVisible();
+
+    await userEvent.click(backorderToggle);
+
+    expect(screen.queryByText('2 ready to ship')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 will be backordered')).not.toBeInTheDocument();
+    expect(screen.queryByText('Lead time: 2-4 weeks')).not.toBeInTheDocument();
+  });
+
+  it('hides backorder toggle and lines when qty is within on hand', async () => {
+    setupPurchasedProductsTable({ totalOnHand: 9, availableToSell: 10 });
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '2', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('checkbox', { name: /Backorder details/i }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('will be backordered', { exact: false })).not.toBeInTheDocument();
+  });
+
+  it('hides backorder toggle and lines when messaging is disabled', async () => {
+    setupPurchasedProductsTable();
+
+    renderWithProviders(<QuickOrder />, { preloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    expect(screen.queryByRole('checkbox', { name: /Backorder details/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('will be backordered', { exact: false })).not.toBeInTheDocument();
+  });
+
+  it('still shows purchased products without backorder UI when inventory fetch fails', async () => {
+    setupPurchasedProductsTable({ inventoryFetchFails: true });
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('checkbox', { name: /Backorder details/i }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('will be backordered', { exact: false })).not.toBeInTheDocument();
+  });
+
+  it('shows a labeled picklist backorder block by default when qty exceeds picklist on hand', async () => {
+    setupPurchasedProductsTableWithPicklist();
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    expect(await screen.findByRole('checkbox', { name: /Backorder details/i })).toBeChecked();
+
+    await waitFor(() => {
+      expect(screen.getByText('Bundle option 1:')).toBeVisible();
+    });
+    expect(screen.getByText('9 ready to ship')).toBeVisible();
+    expect(screen.getByText('1 will be backordered')).toBeVisible();
+    expect(screen.getByText('Picklist lead time: 6 weeks')).toBeVisible();
+  });
+
+  it('hides the picklist backorder block when toggle is turned off', async () => {
+    setupPurchasedProductsTableWithPicklist();
+
+    renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+    expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const quantityInput = within(table).getByRole('spinbutton');
+
+    await userEvent.type(quantityInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: Infinity,
+    });
+
+    const backorderToggle = await screen.findByRole('checkbox', { name: /Backorder details/i });
+    expect(backorderToggle).toBeChecked();
+    expect(await screen.findByText('Bundle option 1:')).toBeVisible();
+
+    await userEvent.click(backorderToggle);
+
+    expect(screen.queryByText('Bundle option 1:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Picklist lead time: 6 weeks')).not.toBeInTheDocument();
+  });
+
+  describe('on mobile', () => {
+    beforeEach(() => {
+      vi.spyOn(document.body, 'clientWidth', 'get').mockReturnValue(500);
+    });
+
+    it('shows backorder lines in the card view by default when qty exceeds on hand', async () => {
+      setupPurchasedProductsTable();
+
+      renderWithProviders(<QuickOrder />, { preloadedState: backorderPreloadedState });
+
+      expect(await screen.findByText('Laugh Canister')).toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      });
+
+      const productCard = screen.getByText('Laugh Canister').closest('.MuiCardContent-root');
+      const quantityInput = within(productCard as HTMLElement).getByRole('spinbutton');
+
+      await userEvent.type(quantityInput, '10', {
+        initialSelectionStart: 0,
+        initialSelectionEnd: Infinity,
+      });
+
+      expect(await screen.findByRole('checkbox', { name: /Backorder details/i })).toBeChecked();
+
+      await waitFor(() => {
+        expect(screen.getByText('2 ready to ship')).toBeVisible();
+      });
+      expect(screen.getByText('2 will be backordered')).toBeVisible();
+      expect(screen.getByText('Lead time: 2-4 weeks')).toBeVisible();
     });
   });
 });

@@ -8,8 +8,12 @@ import { isLoggedInSelector } from '@/store/selectors';
 import { attemptCheckoutLoginAndRedirect, setQuoteToStorage } from '@/utils/b3checkout';
 import b2bLogger from '@/utils/b3Logger';
 import { snackbar } from '@/utils/b3Tip';
-import { platform } from '@/utils/basicConfig';
+import { isBigCommercePlatform, isCatalystPlatform } from '@/utils/basicConfig';
 import { getSearchVal } from '@/utils/loginInfo';
+
+import { detectQuoteStockChange, QuoteStockSnapshotItem } from './detectQuoteStockChange';
+
+export const QUOTE_BACKORDER_CHANGE_STORAGE_KEY = 'b2b.quote.backorderChange';
 
 type ValidationErrorResponse = {
   error?: {
@@ -38,6 +42,9 @@ interface QuoteCheckout {
   navigate?: NavigateFunction;
   b3Lang: LangFormatFunction;
   formatValidationError: (err: ProductValidationError) => string;
+  isBackorderEnabled?: boolean;
+  quoteStockSnapshot?: QuoteStockSnapshotItem[];
+  fetchCurrentStockSnapshot?: () => Promise<QuoteStockSnapshotItem[]>;
 }
 
 export const handleQuoteCheckout = async ({
@@ -48,8 +55,14 @@ export const handleQuoteCheckout = async ({
   navigate,
   b3Lang,
   formatValidationError,
+  isBackorderEnabled = false,
+  quoteStockSnapshot,
+  fetchCurrentStockSnapshot,
 }: QuoteCheckout) => {
   try {
+    // Clear any stale flag from a previous attempt so this checkout produces a fresh verdict.
+    sessionStorage.removeItem(QUOTE_BACKORDER_CHANGE_STORAGE_KEY);
+
     store.dispatch(setQuoteDetailToCheckoutUrl(''));
 
     const {
@@ -90,12 +103,30 @@ export const handleQuoteCheckout = async ({
     setQuoteToStorage(quoteId, date, quoteUuid);
     const { checkoutUrl, cartId } = checkout;
 
-    if (platform === 'bigcommerce') {
+    if (
+      isBackorderEnabled &&
+      quoteStockSnapshot &&
+      quoteStockSnapshot.length &&
+      fetchCurrentStockSnapshot
+    ) {
+      try {
+        const afterSnapshot = await fetchCurrentStockSnapshot();
+        const stockChange = detectQuoteStockChange(quoteStockSnapshot, afterSnapshot);
+
+        if (stockChange) {
+          sessionStorage.setItem(QUOTE_BACKORDER_CHANGE_STORAGE_KEY, 'true');
+        }
+      } catch (e) {
+        b2bLogger.error(e);
+      }
+    }
+
+    if (isBigCommercePlatform()) {
       window.location.href = checkoutUrl;
       return;
     }
 
-    if (platform === 'catalyst') {
+    if (isCatalystPlatform()) {
       window.location.href = `/checkout?cartId=${cartId}`;
       return;
     }

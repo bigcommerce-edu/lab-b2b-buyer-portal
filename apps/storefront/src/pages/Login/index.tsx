@@ -6,20 +6,23 @@ import { B3Card } from '@/components/B3Card';
 import B3Spin from '@/components/spin/B3Spin';
 import { CHECKOUT_URL } from '@/constants';
 import { dispatchEvent } from '@/hooks/useB2BCallback';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useMobile } from '@/hooks/useMobile';
 import { useB3Lang } from '@/lib/lang';
 import { CustomStyleContext } from '@/shared/customStyleButton';
 import { GlobalContext } from '@/shared/global';
-import { getBCForcePasswordReset } from '@/shared/service/b2b';
-import { bcLogin, customerLoginAPI } from '@/shared/service/bc';
+import { getB2BToken, getBCForcePasswordReset } from '@/shared/service/b2b';
+import { bcLogin, customerLoginAPI, getCurrentCustomerJWT } from '@/shared/service/bc';
+import { getAppClientId } from '@/shared/service/request/base';
 import { isLoggedInSelector, useAppDispatch, useAppSelector } from '@/store';
-import { setB2BToken } from '@/store/slices/company';
+import { setB2BToken, setCurrentCustomerJWT } from '@/store/slices/company';
 import { LoginFlagType } from '@/types/login';
 import b2bLogger from '@/utils/b3Logger';
 import { snackbar } from '@/utils/b3Tip';
-import { platform } from '@/utils/basicConfig';
+import { channelId, isCatalystPlatform } from '@/utils/basicConfig';
 import { isCompanyError } from '@/utils/companyUtils';
 import { getCurrentCustomerInfo } from '@/utils/loginInfo';
+import { isDefaultLoginStylingActive } from '@/utils/preMountLoginMask';
 
 import { type PageProps } from '../PageProps';
 
@@ -49,12 +52,21 @@ function Login(props: PageProps) {
 
   const isLoggedIn = useAppSelector(isLoggedInSelector);
 
+  const useBcLoginAndAuthorisation = useFeatureFlag('PROJECT-7920.use_bc_login_and_authorisation');
+
   const quoteDetailToCheckoutUrl = useAppSelector(
     ({ quoteInfo }) => quoteInfo.quoteDetailToCheckoutUrl,
   );
 
   const [isLoading, setLoading] = useState(true);
   const isSubmittingRef = useRef(false);
+  /**
+   * Tracks which loginFlag has already triggered logout so it only runs once.
+   * Without this, the first logout flips isLoggedIn to false,
+   * the effect fires again, and a second logout clears the freshly fetched bcGraphqlToken,
+   * breaking login until refresh.
+   */
+  const handledLogoutFlagRef = useRef<LoginFlagType | null>(null);
   const [isMobile] = useMobile();
 
   const [showTipInfo, setShowTipInfo] = useState<boolean>(true);
@@ -70,6 +82,23 @@ function Login(props: PageProps) {
   const {
     state: { isCheckout, registerEnabled, isLogoLoaded },
   } = useContext(GlobalContext);
+
+  // Read the feature signal synchronously (not from Redux), since the Redux flag
+  // is still false on the first render — before getStoreConfigs resolves — which
+  // would let the form render with hardcoded defaults and then flicker as the
+  // real config swaps in. isDefaultLoginStylingActive() mirrors the pre-mount
+  // mask's optimistic gate, so the in-iframe content and the mask stay in step.
+  const [isDefaultLoginStyling] = useState(isDefaultLoginStylingActive);
+  const isPageComplete = useAppSelector(({ global }) => global.isPageComplete);
+
+  // When the default-login-styling feature is on, hold the form back until the
+  // merchant login config has loaded (isLogoLoaded) to avoid a flicker as the
+  // hardcoded context defaults are swapped for the real config. We also reveal
+  // the form once app init has finished (isPageComplete) so that a failed
+  // getStoreConfigs — which leaves isLogoLoaded false — doesn't strand the user
+  // on an endless spinner with no sign-in form. When the feature is off we keep
+  // the previous behaviour of rendering the form immediately.
+  const isLoginConfigReady = !isDefaultLoginStyling || isLogoLoaded || isPageComplete;
 
   const {
     state: {
@@ -89,11 +118,17 @@ function Login(props: PageProps) {
         if (isLoginFlagType(loginFlag)) {
           setLoginFlag(loginFlag);
 
-          if (isLoggedIn && loginFlag === 'loggedOutLogin') {
-            await logout({ showLogoutBanner: true });
-            // All company-related flags have isLoggedIn set to false.
-          } else if (!isLoggedIn && SHOULD_LOGOUT_FLAGS.includes(loginFlag)) {
-            await logout({ showLogoutBanner: false });
+          const shouldLogout =
+            (isLoggedIn && loginFlag === 'loggedOutLogin') ||
+            (!isLoggedIn && SHOULD_LOGOUT_FLAGS.includes(loginFlag));
+
+          /* Guard against a second logout: logging out flips isLoggedIn to false and
+           * re-runs this effect, which would otherwise re-trigger the !isLoggedIn branch.
+           * loggedOutLogin is only handled while logged in; the post-sign-out re-run skips it. */
+          if (shouldLogout && handledLogoutFlagRef.current !== loginFlag) {
+            handledLogoutFlagRef.current = loginFlag;
+            // Banner only when an actually-logged-in user is signing out.
+            await logout({ showLogoutBanner: isLoggedIn && loginFlag === 'loggedOutLogin' });
           }
         }
 
@@ -104,41 +139,133 @@ function Login(props: PageProps) {
     })();
   }, [b3Lang, isLoggedIn, logout, searchParams]);
 
+  const fetchCurrentCustomerJWT = async (): Promise<string | undefined> => {
+    const currentCustomerJWT = await getCurrentCustomerJWT(getAppClientId()).catch((error) => {
+      b2bLogger.error(error);
+      return undefined;
+    });
+
+    if (currentCustomerJWT) {
+      storeDispatch(setCurrentCustomerJWT(currentCustomerJWT));
+    }
+
+    return currentCustomerJWT;
+  };
+
+  const fetchB2BTokenByAuthMutation = async (
+    currentCustomerJWT: string | undefined,
+    email: string,
+  ): Promise<string | undefined> => {
+    if (!currentCustomerJWT) {
+      b2bLogger.error('B2B token error:', 'Missing customer JWT');
+      setLoginFlag('accountIncorrect');
+      return undefined;
+    }
+
+    /*
+     * Don't catch getB2BToken errors here — let them propagate to
+     * handleRegularLogin's catch, which distinguishes CompanyError (pending /
+     * inactive accounts → snackbar + logout) and the prelaunch error
+     * (→ accountPrelaunch). Swallowing them would mis-report every failure as
+     * "incorrect credentials".
+     */
+    const data = await getB2BToken(currentCustomerJWT, channelId);
+    const B2BToken = data.authorization.result.token as string;
+
+    if (!B2BToken) {
+      b2bLogger.error('No B2B token returned from auth mutation');
+      const needsReset = await getBCForcePasswordReset(email);
+      setLoginFlag(needsReset ? 'resetPassword' : 'accountIncorrect');
+      return undefined;
+    }
+
+    return B2BToken;
+  };
+  // Shared success tail for both login flows: load the customer profile for the
+  // freshly issued B2B token and route the user to the right landing page.
+  const finishLoginAndNavigate = async (token: string) => {
+    const info = await getCurrentCustomerInfo(token);
+    navigateAfterSuccessfulLogin(navigate, info, quoteDetailToCheckoutUrl);
+  };
+
+  const loginWithBcAuthorization = async (
+    email: string,
+    bcErrors: Awaited<ReturnType<typeof bcLogin>>['errors'],
+  ) => {
+    if (bcErrors?.[0]) {
+      b2bLogger.error('BC login error:', bcErrors[0]?.message);
+      setLoginFlag('accountIncorrect');
+      return;
+    }
+
+    const currentCustomerJWT = await fetchCurrentCustomerJWT();
+    const B2BToken = await fetchB2BTokenByAuthMutation(currentCustomerJWT, email);
+    if (!B2BToken) {
+      return;
+    }
+
+    storeDispatch(setB2BToken(B2BToken));
+    await finishLoginAndNavigate(B2BToken);
+  };
+
+  // Legacy flow (useBcLoginAndAuthorisation = false): the B2B login mutation
+  // returns the B2B token and a storefront login token in a single call.
+  const loginWithLegacyB2BMutation = async (data: LoginConfig) => {
+    const { token, storefrontLoginToken, errors } = await performB2BLogin(data);
+
+    storeDispatch(setB2BToken(token));
+    customerLoginAPI(storefrontLoginToken);
+    dispatchEvent('on-login', { storefrontToken: storefrontLoginToken });
+
+    if (
+      errors?.[0]?.message === 'Operation cannot be performed as the storefront channel is not live'
+    ) {
+      setLoginFlag('accountPrelaunch');
+      return;
+    }
+
+    if (errors?.[0] || !token) {
+      const needsReset = await getBCForcePasswordReset(data.email);
+      setLoginFlag(needsReset ? 'resetPassword' : 'accountIncorrect');
+      return;
+    }
+
+    await finishLoginAndNavigate(token);
+  };
+
+  /*
+   *  New Login flow:
+   * 1. Fetch the BC storefront auth token (storefronttoken gql) — done automatically on page load.
+   * 2. Run the BC login mutation (bcLogin) with the email/password. If it fails, the flow stops here.
+   *   Skipped when the user logs in from the control panel Customers tab.
+   * 3. Retrieve the current customer JWT (fetchCurrentCustomerJWT).
+   * 4. Run the Authorization mutation using that JWT.
+   */
   const handleRegularLogin = async (data: LoginConfig) => {
     try {
       const { errors: bcErrors } = await bcLogin({ email: data.email, password: data.password });
+
       if (bcErrors?.[0]?.message === 'Reset password') {
         const needsReset = await getBCForcePasswordReset(data.email);
         setLoginFlag(needsReset ? 'resetPassword' : 'accountIncorrect');
         return;
       }
 
-      const { token, storefrontLoginToken, errors } = await performB2BLogin(data);
-
-      storeDispatch(setB2BToken(token));
-      customerLoginAPI(storefrontLoginToken);
-      dispatchEvent('on-login', { storefrontToken: storefrontLoginToken });
-
-      if (
-        errors?.[0]?.message ===
-        'Operation cannot be performed as the storefront channel is not live'
-      ) {
-        setLoginFlag('accountPrelaunch');
-        return;
+      if (useBcLoginAndAuthorisation) {
+        await loginWithBcAuthorization(data.email, bcErrors);
+      } else {
+        await loginWithLegacyB2BMutation(data);
       }
-
-      if (errors?.[0] || !token) {
-        const needsReset = await getBCForcePasswordReset(data.email);
-        setLoginFlag(needsReset ? 'resetPassword' : 'accountIncorrect');
-        return;
-      }
-
-      const info = await getCurrentCustomerInfo(token);
-      navigateAfterSuccessfulLogin(navigate, info, quoteDetailToCheckoutUrl);
     } catch (error: unknown) {
       if (isCompanyError(error)) {
         snackbar.error(b3Lang(COMPANY_STATUS_MAPPINGS[error.reason]));
         await logout({ showLogoutBanner: false });
+      } else if (
+        useBcLoginAndAuthorisation &&
+        error instanceof Error &&
+        error.message === 'Operation cannot be performed as the storefront channel is not live'
+      ) {
+        setLoginFlag('accountPrelaunch');
       } else if (error instanceof Error) {
         snackbar.error(b3Lang('login.loginTipInfo.accountIncorrect'));
       }
@@ -187,7 +314,11 @@ function Login(props: PageProps) {
   return (
     <B3Card setOpenPage={setOpenPage}>
       <LoginContainer paddings={isMobile ? '0' : '20px 20px'}>
-        <B3Spin isSpinning={isLoading} tip={b3Lang('global.tips.loading')} background="transparent">
+        <B3Spin
+          isSpinning={isLoading || !isLoginConfigReady}
+          tip={b3Lang('global.tips.loading')}
+          background="transparent"
+        >
           <Box
             sx={{
               display: 'flex',
@@ -198,84 +329,97 @@ function Login(props: PageProps) {
               minWidth: '343px',
             }}
           >
-            <LoginTip showTipInfo={showTipInfo} flag={flag} loginAccount={loginAccount} />
-            {quoteDetailToCheckoutUrl && (
-              <Alert severity="error" variant="filled">
-                {b3Lang('login.loginText.quoteDetailToCheckoutUrl')}
-              </Alert>
-            )}
-            <Box sx={{ margin: '20px 0', minHeight: '150px' }}>
-              {isLogoLoaded && loginInfo.logo && (
-                <LoginImage
-                  maxWidth={isMobile ? '70%' : '250px'}
-                  src={loginInfo.logo}
-                  alt={b3Lang('login.registerLogo')}
-                  onClick={() => {
-                    window.location.href = '/';
-                  }}
-                />
-              )}
-            </Box>
-            {loginInfo.widgetHeadText && (
-              <LoginWidget
-                sx={{
-                  minHeight: '48px',
-                  width: registerEnabled || isMobile ? '100%' : '50%',
-                }}
-                html={loginInfo.widgetHeadText}
-              />
-            )}
-            <Box
-              sx={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: '4px',
-                margin: '20px 0',
-                display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
-                justifyContent: 'center',
-                width: isMobile ? 'auto' : loginAndRegisterContainerWidth,
-              }}
-            >
-              <Box
-                sx={{
-                  width: isMobile ? 'auto' : loginContainerWidth,
-                  paddingRight: isMobile ? 0 : '2%',
-                  ml: '16px',
-                  mr: isMobile ? '16px' : undefined,
-                  pb: registerEnabled ? undefined : '36px',
-                }}
-              >
-                <LoginForm
-                  loginBtn={loginInfo.loginBtn}
-                  handleLoginSubmit={handleLoginSubmit}
-                  backgroundColor={backgroundColor}
-                  isLoading={isLoading}
-                />
-              </Box>
-
-              {registerEnabled && (
+            {/*
+              Wait for the merchant login config (logo, button text, HTML regions, create
+              account panel) to load before rendering the form. The contexts hold hardcoded
+              defaults until getStoreConfigs() resolves, and rendering them first causes a
+              flicker as the real config swaps in. isLogoLoaded flips true in the same dispatch
+              that merges the CustomStyleContext config, so it gates the whole login config.
+              This gating only applies when the default-login-styling feature flag is on; see
+              isLoginConfigReady for the flag/fallback behaviour.
+            */}
+            {isLoginConfigReady && (
+              <>
+                <LoginTip showTipInfo={showTipInfo} flag={flag} loginAccount={loginAccount} />
+                {quoteDetailToCheckoutUrl && (
+                  <Alert severity="error" variant="filled">
+                    {b3Lang('login.loginText.quoteDetailToCheckoutUrl')}
+                  </Alert>
+                )}
+                <Box sx={{ margin: '20px 0', minHeight: '150px' }}>
+                  {isLogoLoaded && loginInfo.logo && (
+                    <LoginImage
+                      maxWidth={isMobile ? '70%' : '250px'}
+                      src={loginInfo.logo}
+                      alt={b3Lang('login.registerLogo')}
+                      onClick={() => {
+                        window.location.href = '/';
+                      }}
+                    />
+                  )}
+                </Box>
+                {loginInfo.widgetHeadText && (
+                  <LoginWidget
+                    sx={{
+                      minHeight: '48px',
+                      width: registerEnabled || isMobile ? '100%' : '50%',
+                    }}
+                    html={loginInfo.widgetHeadText}
+                  />
+                )}
                 <Box
                   sx={{
-                    flex: '1',
-                    paddingLeft: isMobile ? 0 : '2%',
-                    mb: '20px',
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: '4px',
+                    margin: '20px 0',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    justifyContent: 'center',
+                    width: isMobile ? 'auto' : loginAndRegisterContainerWidth,
                   }}
                 >
-                  <LoginPanel
-                    createAccountButtonText={loginInfo.createAccountButtonText}
-                    widgetBodyText={loginInfo.widgetBodyText}
-                  />
+                  <Box
+                    sx={{
+                      width: isMobile ? 'auto' : loginContainerWidth,
+                      paddingRight: isMobile ? 0 : '2%',
+                      ml: '16px',
+                      mr: isMobile ? '16px' : undefined,
+                      pb: registerEnabled ? undefined : '36px',
+                    }}
+                  >
+                    <LoginForm
+                      loginBtn={loginInfo.loginBtn}
+                      handleLoginSubmit={handleLoginSubmit}
+                      backgroundColor={backgroundColor}
+                      isLoading={isLoading}
+                    />
+                  </Box>
+
+                  {registerEnabled && (
+                    <Box
+                      sx={{
+                        flex: '1',
+                        paddingLeft: isMobile ? 0 : '2%',
+                        mb: '20px',
+                      }}
+                    >
+                      <LoginPanel
+                        createAccountButtonText={loginInfo.createAccountButtonText}
+                        widgetBodyText={loginInfo.widgetBodyText}
+                      />
+                    </Box>
+                  )}
                 </Box>
-              )}
-            </Box>
-            {loginInfo.widgetFooterText && (
-              <LoginWidget
-                sx={{
-                  minHeight: '48px',
-                  width: registerEnabled || isMobile ? '100%' : '50%',
-                }}
-                html={loginInfo.widgetFooterText}
-              />
+                {loginInfo.widgetFooterText && (
+                  <LoginWidget
+                    sx={{
+                      minHeight: '48px',
+                      width: registerEnabled || isMobile ? '100%' : '50%',
+                    }}
+                    html={loginInfo.widgetFooterText}
+                  />
+                )}
+              </>
             )}
           </Box>
         </B3Spin>
@@ -285,7 +429,7 @@ function Login(props: PageProps) {
 }
 
 export default function LoginPage(props: PageProps) {
-  if (platform === 'catalyst') {
+  if (isCatalystPlatform()) {
     return <CatalystLogin />;
   }
 

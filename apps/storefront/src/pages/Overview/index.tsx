@@ -7,10 +7,10 @@ import {
   Typography,
 } from "@mui/material";
 import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
-import { permissionLevels } from "@/constants";
-import { validatePermissionWithComparisonType } from '@/utils/b3CheckPermissions/check';
-import { newPermissions } from "@/shared/routes/config";
-import { type SetOpenPage } from '@/pages/SetOpenPage';
+import {
+  rolePermissionSelector,
+  useAppSelector,
+} from '@/store';
 
 import Identity from "./components/Identity";
 import RecentOrders from "./components/RecentOrders";
@@ -20,13 +20,7 @@ import RecentQuotes from "./components/RecentQuotes";
 
 import { useB3Lang } from "@/lib/lang";
 
-interface OverviewProps {
-  setOpenPage: SetOpenPage;
-}
-
-export default function Overview({
-  setOpenPage,
-}: OverviewProps) {
+export default function Overview() {
   const b3Lang = useB3Lang();
 
   const [ordersOpen, setOrdersOpen] = useState<boolean>(false);
@@ -34,29 +28,12 @@ export default function Overview({
   const [shoppingListsOpen, setShoppingListsOpen] = useState<boolean>(false);
   const [quotesOpen, setQuotesOpen] = useState<boolean>(false);
 
-  const allowOrders = validatePermissionWithComparisonType({
-    code: newPermissions.ordersPermissionCodes,
-    level: permissionLevels.COMPANY,
-    containOrEqual: 'contain',
-  });
-
-  const allowInvoices = validatePermissionWithComparisonType({
-    code: newPermissions.invoicePermissionCodes,
-    level: permissionLevels.COMPANY,
-    containOrEqual: 'contain',
-  });
-
-  const allowShoppingLists = validatePermissionWithComparisonType({
-    code: newPermissions.shoppingListsPermissionCodes,
-    level: permissionLevels.USER,
-    containOrEqual: 'contain',
-  });
-
-  const allowQuotes = validatePermissionWithComparisonType({
-    code: newPermissions.quotesPermissionCodes,
-    level: permissionLevels.COMPANY,
-    containOrEqual: 'contain',
-  });
+  const {
+    getOrderPermission,
+    getInvoicesPermission,
+    getShoppingListPermission,
+    getQuotesPermission,
+  } = useAppSelector(rolePermissionSelector);
 
   return (
     <>
@@ -73,7 +50,7 @@ export default function Overview({
         </Grid>
 
         {/* TRY: Log in as a Junior Buyer user to verify that Recent Orders does not show */}
-        {allowOrders && (
+        {getOrderPermission && (
         <Grid
           item
           key="recent-orders"
@@ -90,14 +67,13 @@ export default function Overview({
             <AccordionDetails>
               <RecentOrders
                 startLoad={ordersOpen}
-                setOpenPage={setOpenPage}
               />
             </AccordionDetails>
           </Accordion>
         </Grid>
         )}
 
-        {allowInvoices && (
+        {getInvoicesPermission && (
         <Grid
           item
           key="recent-invoices"
@@ -114,14 +90,13 @@ export default function Overview({
             <AccordionDetails>
               <RecentInvoices
                 startLoad={invoicesOpen}
-                setOpenPage={setOpenPage}
               />
             </AccordionDetails>
           </Accordion>
         </Grid>
         )}
 
-        {allowShoppingLists && (
+        {getShoppingListPermission && (
         <Grid
           item
           key="recent-shopping-lists"
@@ -138,14 +113,13 @@ export default function Overview({
             <AccordionDetails>
               <RecentShoppingLists
                 startLoad={shoppingListsOpen}
-                setOpenPage={setOpenPage}
               />
             </AccordionDetails>
           </Accordion>
         </Grid>
         )}
 
-        {allowQuotes && (
+        {getQuotesPermission && (
         <Grid
           item
           key="recent-quotes"
@@ -162,7 +136,6 @@ export default function Overview({
             <AccordionDetails>
               <RecentQuotes
                 startLoad={quotesOpen}
-                setOpenPage={setOpenPage}
               />
             </AccordionDetails>
           </Accordion>

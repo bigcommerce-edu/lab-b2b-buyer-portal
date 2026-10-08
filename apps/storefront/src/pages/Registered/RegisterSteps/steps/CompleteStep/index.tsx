@@ -11,21 +11,22 @@ import { CustomStyleContext } from '@/shared/customStyleButton/context';
 import { GlobalContext } from '@/shared/global';
 import { sendSubscribersState, uploadB2BFile } from '@/shared/service/b2b';
 import { getStorefrontToken } from '@/shared/service/b2b/graphql/recaptcha';
-import { RegisterCompanyStatus } from '@/shared/service/bc/graphql/company';
+import {
+  RegisterCompanyStatus,
+  type UploadedCompanyFile,
+} from '@/shared/service/bc/graphql/company';
 import { CompanyStatus } from '@/types/company';
 import b2bLogger from '@/utils/b3Logger';
-import { channelId, storeHash } from '@/utils/basicConfig';
+import { channelId, isBigCommercePlatform, storeHash } from '@/utils/basicConfig';
+import { ensureBcGraphqlToken } from '@/utils/loginInfo';
+import { performStorefrontLogout } from '@/utils/performStorefrontLogout';
 
 import { RegisteredContext } from '../../../Context';
-import { RegisterFields } from '../../../types';
+import { RegisterAccountType, RegisterFields } from '../../../types';
 import { PrimaryButton } from '../../PrimaryButton';
 import { InformationFourLabels, TipContent } from '../../styled';
 
-import {
-  ensureBcStorefrontGraphqlToken,
-  loginAndGetBcCustomer,
-  logoutBcCustomer,
-} from './bcHelpers';
+import { loginAndGetBcCustomer } from './bcHelpers';
 import { createCompany } from './createCompany';
 import { createCustomer } from './createCustomer';
 import { registerCompany } from './registerCompany';
@@ -36,6 +37,11 @@ interface CompleteStepProps {
 }
 
 type CompleteStepList = Array<RegisterFields> | undefined;
+
+type PasswordCredentials = {
+  password: string;
+  confirmPassword: string;
+};
 
 export default function CompleteStep(props: CompleteStepProps) {
   const b3Lang = useB3Lang();
@@ -110,16 +116,18 @@ export default function CompleteStep(props: CompleteStepProps) {
     emailMarketingNewsletter,
   } = state;
 
-  const list: CompleteStepList = accountType === '1' ? contactInformation : bcContactInformation;
+  const list: CompleteStepList =
+    accountType === RegisterAccountType.BUSINESS ? contactInformation : bcContactInformation;
   const passwordInfo: CompleteStepList =
-    accountType === '1' ? passwordInformation : bcPasswordInformation;
+    accountType === RegisterAccountType.BUSINESS ? passwordInformation : bcPasswordInformation;
 
   const passwordName = passwordInfo[0]?.groupName || '';
 
   const additionalInfo: CompleteStepList =
-    accountType === '1' ? additionalInformation : bcAdditionalInformation;
+    accountType === RegisterAccountType.BUSINESS ? additionalInformation : bcAdditionalInformation;
 
-  const addressBasicList = accountType === '1' ? addressBasicFields : bcAddressBasicFields;
+  const addressBasicList =
+    accountType === RegisterAccountType.BUSINESS ? addressBasicFields : bcAddressBasicFields;
 
   const createCustomerContext = {
     emailMarketingNewsletter,
@@ -199,7 +207,7 @@ export default function CompleteStep(props: CompleteStepProps) {
   const saveRegisterPassword = (data: CustomFieldItems) => {
     const newPasswordInformation = passwordInformation.map((field: RegisterFields) => {
       const registerField = field;
-      if (accountType === '1') {
+      if (accountType === RegisterAccountType.BUSINESS) {
         registerField.default = data[field.name] ?? field.default;
       }
       return field;
@@ -207,7 +215,7 @@ export default function CompleteStep(props: CompleteStepProps) {
 
     const newBcPasswordInformation = bcPasswordInformation.map((field: RegisterFields) => {
       const registerField = field;
-      if (accountType === '2') {
+      if (accountType === RegisterAccountType.PERSONAL) {
         registerField.default = data[field.name] ?? field.default;
       }
 
@@ -252,17 +260,86 @@ export default function CompleteStep(props: CompleteStepProps) {
     }
   };
 
+  // Personal accounts are always auto-approved
+  const registerPersonalAccount = async (credentials: PasswordCredentials): Promise<boolean> => {
+    await createCustomer(credentials, createCustomerContext);
+
+    return true;
+  };
+
+  const registerViaCompanyFlow = async (
+    customerEmail: string,
+    password: string,
+    attachmentFields: RegisterFields[],
+  ): Promise<boolean> => {
+    await ensureBcGraphqlToken();
+
+    const customerDetails = await loginAndGetBcCustomer(
+      {
+        email: customerEmail,
+        password,
+      },
+      b3Lang('global.error.genericMessage'),
+    );
+    const fileList = await getFileUrl(attachmentFields || []);
+    const registerCompanyStatus = await registerCompany(
+      customerDetails,
+      fileList as UploadedCompanyFile[] | undefined,
+      createCompanyContext,
+    );
+    const isAutoApproval = registerCompanyStatus === RegisterCompanyStatus.APPROVED;
+
+    if (!isAutoApproval) {
+      await performStorefrontLogout();
+    }
+
+    return isAutoApproval;
+  };
+
+  const registerViaLegacyFlow = async (
+    credentials: PasswordCredentials,
+    customerId: number,
+    customerEmail: string,
+    attachmentFields: RegisterFields[],
+  ): Promise<boolean> => {
+    const fileList = await getFileUrl(attachmentFields || []);
+    const accountInfo = await createCompany(
+      credentials,
+      customerId,
+      customerEmail,
+      fileList,
+      createCompanyContext,
+    );
+
+    const companyStatus = accountInfo?.companyCreate?.company?.companyStatus || '';
+
+    return Number(companyStatus) === CompanyStatus.APPROVED;
+  };
+
+  const registerBusinessAccount = async (credentials: PasswordCredentials): Promise<boolean> => {
+    const attachmentFields = companyInformation.filter((field) => field.fieldType === 'files');
+    const { customerId, customerEmail } = await createCustomer(credentials, createCustomerContext);
+
+    if (isRegisterCompanyFlowEnabled && isBigCommercePlatform()) {
+      return registerViaCompanyFlow(customerEmail, credentials.password, attachmentFields);
+    }
+
+    return registerViaLegacyFlow(credentials, customerId, customerEmail, attachmentFields);
+  };
+
+  const validatePasswordsMatch = (password: string, confirmPassword: string): boolean => {
+    if (password === confirmPassword) return true;
+
+    const message = b3Lang('global.registerComplete.passwordMatchPrompt');
+    setError('confirmPassword', { type: 'manual', message });
+    setError('password', { type: 'manual', message });
+
+    return false;
+  };
+
   const handleCompleted = (event: MouseEvent) => {
     handleSubmit(async ({ password, confirmPassword }: CustomFieldItems) => {
-      if (password !== confirmPassword) {
-        setError('confirmPassword', {
-          type: 'manual',
-          message: b3Lang('global.registerComplete.passwordMatchPrompt'),
-        });
-        setError('password', {
-          type: 'manual',
-          message: b3Lang('global.registerComplete.passwordMatchPrompt'),
-        });
+      if (!validatePasswordsMatch(password, confirmPassword)) {
         return;
       }
 
@@ -271,80 +348,29 @@ export default function CompleteStep(props: CompleteStepProps) {
         return;
       }
 
-      if (!isCaptchaMissing) {
-        try {
-          dispatch({
-            type: 'loading',
-            payload: {
-              isLoading: true,
-            },
-          });
+      if (isCaptchaMissing) {
+        return;
+      }
 
-          let isAutoApproval = true;
-          if (accountType === '2') {
-            await createCustomer({ password, confirmPassword }, createCustomerContext);
-          } else {
-            const attachmentsList = companyInformation.filter((list) => list.fieldType === 'files');
-            const fileList = await getFileUrl(attachmentsList || []);
-            const { customerId, customerEmail } = await createCustomer(
-              { password, confirmPassword },
-              createCustomerContext,
-            );
+      try {
+        dispatch({ type: 'loading', payload: { isLoading: true } });
 
-            if (isRegisterCompanyFlowEnabled) {
-              await ensureBcStorefrontGraphqlToken();
+        const isAutoApproval =
+          accountType === RegisterAccountType.PERSONAL
+            ? await registerPersonalAccount({ password, confirmPassword })
+            : await registerBusinessAccount({ password, confirmPassword });
 
-              const customerDetails = await loginAndGetBcCustomer(
-                {
-                  email: customerEmail,
-                  password,
-                },
-                b3Lang('global.error.genericMessage'),
-              );
-              const registerCompanyStatus = await registerCompany(
-                customerDetails,
-                fileList,
-                createCompanyContext,
-              );
-              isAutoApproval = registerCompanyStatus === RegisterCompanyStatus.APPROVED;
-
-              if (!isAutoApproval) {
-                await logoutBcCustomer();
-              }
-            } else {
-              const accountInfo = await createCompany(
-                { password, confirmPassword },
-                customerId,
-                customerEmail,
-                fileList,
-                createCompanyContext,
-              );
-
-              const companyStatus = accountInfo?.companyCreate?.company?.companyStatus || '';
-              isAutoApproval = Number(companyStatus) === CompanyStatus.APPROVED;
-            }
-          }
-          dispatch({
-            type: 'finishInfo',
-            payload: {
-              submitSuccess: true,
-              isAutoApproval,
-              blockPendingAccountOrderCreation,
-            },
-          });
-          saveRegisterPassword({ password, confirmPassword });
-          await handleSendSubscribersState();
-          handleNext(password);
-        } catch (err: unknown) {
-          setErrorMessage(err instanceof Error ? err.message : String(err));
-        } finally {
-          dispatch({
-            type: 'loading',
-            payload: {
-              isLoading: false,
-            },
-          });
-        }
+        dispatch({
+          type: 'finishInfo',
+          payload: { submitSuccess: true, isAutoApproval, blockPendingAccountOrderCreation },
+        });
+        saveRegisterPassword({ password, confirmPassword });
+        await handleSendSubscribersState();
+        handleNext(password);
+      } catch (err: unknown) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      } finally {
+        dispatch({ type: 'loading', payload: { isLoading: false } });
       }
     })(event);
   };

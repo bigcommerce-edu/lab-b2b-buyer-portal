@@ -1,6 +1,4 @@
-import { platform } from '@/utils/basicConfig';
-
-import B3Request from '../../request/b3Fetch';
+import { storefrontGQLRequest } from './client';
 
 /**
  * GraphQL Storefront API: Company Account Registration
@@ -28,12 +26,28 @@ export interface RegisterCompanyAddressInput {
   extraFields?: ExtraFields;
 }
 
+export interface UploadedCompanyFile {
+  fileId: string;
+  fileUrl: string;
+  fileName: string;
+  fileType: string;
+  fileSize: string | number;
+}
+
+export interface RegisterCompanyFileInput {
+  fileId: string;
+  fileUrl: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+}
+
 export interface RegisterCompanyInput {
   name: string;
   email: string;
   phone: string;
   address: RegisterCompanyAddressInput;
-  fileList?: Array<{ fileId: string }>;
+  fileList?: RegisterCompanyFileInput[];
   extraFields?: ExtraFields;
   companyUser?: { extraFields?: ExtraFields };
 }
@@ -98,13 +112,8 @@ export async function registerCompany(
   input: RegisterCompanyInput,
 ): Promise<RegisterCompanyMutationResponse> {
   const variables = { input };
-  return platform === 'bigcommerce'
-    ? B3Request.graphqlBC<RegisterCompanyMutationResponse>({
-        query: REGISTER_COMPANY_MUTATION,
-        variables,
-      })
-    : B3Request.graphqlBCProxy<RegisterCompanyMutationResponse>({
-        query: REGISTER_COMPANY_MUTATION,
-        variables,
-      });
+  return storefrontGQLRequest<RegisterCompanyMutationResponse>({
+    query: REGISTER_COMPANY_MUTATION,
+    variables,
+  });
 }
